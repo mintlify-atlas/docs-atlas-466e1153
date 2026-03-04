@@ -1,0 +1,204 @@
+---
+title: Packages Overview
+description: Comprehensive overview of all Salt packages and their capabilities
+---
+
+Salt is a modular Go library providing essential building blocks for backend services. Each package is designed to be independent, lightweight, and production-ready.
+
+## Package Categories
+
+### Core Infrastructure
+
+<CardGroup cols={2}>
+  <Card title="Config" icon="gear" href="/packages/config">
+    Flexible configuration management with support for files, environment variables, and command-line flags
+  </Card>
+  
+  <Card title="Database" icon="database" href="/packages/db">
+    Database connection management with connection pooling and migrations
+  </Card>
+  
+  <Card title="Logging" icon="file-lines" href="/packages/log">
+    Structured logging with multiple backend implementations
+  </Card>
+  
+  <Card title="Telemetry" icon="chart-line" href="/packages/telemetry">
+    OpenTelemetry integration for metrics and distributed tracing
+  </Card>
+</CardGroup>
+
+### CLI Development
+
+<CardGroup cols={2}>
+  <Card title="Commander" icon="terminal" href="/packages/cli">
+    Enhanced Cobra command management with topics, hooks, and reference generation
+  </Card>
+  
+  <Card title="Printer" icon="print" href="/packages/cli">
+    Terminal output utilities including tables, spinners, and progress bars
+  </Card>
+  
+  <Card title="Prompter" icon="question" href="/packages/cli">
+    Interactive user input with selections, confirmations, and text input
+  </Card>
+</CardGroup>
+
+### Authentication & Security
+
+<CardGroup cols={2}>
+  <Card title="OIDC" icon="lock" href="/packages/auth">
+    OpenID Connect authentication with PKCE support
+  </Card>
+  
+  <Card title="Audit" icon="clipboard-check" href="/packages/auth">
+    Audit logging for tracking user actions and system events
+  </Card>
+</CardGroup>
+
+### Server Utilities
+
+<CardGroup cols={2}>
+  <Card title="Mux" icon="server" href="/packages/server">
+    Multiplexed server management for HTTP and gRPC
+  </Card>
+  
+  <Card title="SPA" icon="window" href="/packages/server">
+    Single-page application serving utilities
+  </Card>
+</CardGroup>
+
+### Data Processing
+
+<CardGroup cols={2}>
+  <Card title="JSON Diff" icon="code-compare" href="/packages/jsondiff">
+    Intelligent JSON comparison and change tracking
+  </Card>
+  
+  <Card title="RQL" icon="filter" href="/packages/rql">
+    REST Query Language parser for advanced filtering and sorting
+  </Card>
+  
+  <Card title="Utils" icon="wrench" href="/packages/utils">
+    General utilities including gRPC status helpers
+  </Card>
+</CardGroup>
+
+## Installation
+
+Install Salt packages using Go modules:
+
+```bash
+go get github.com/raystack/salt
+```
+
+Or install specific subpackages:
+
+```bash
+go get github.com/raystack/salt/config
+go get github.com/raystack/salt/log
+go get github.com/raystack/salt/db
+```
+
+## Design Principles
+
+<AccordionGroup>
+  <Accordion title="Modularity">
+    Each package is independently usable. Import only what you need without carrying unnecessary dependencies.
+  </Accordion>
+  
+  <Accordion title="Production Ready">
+    All packages are battle-tested in production environments and follow Go best practices.
+  </Accordion>
+  
+  <Accordion title="Minimal Dependencies">
+    Carefully curated dependencies to keep your binary size small and maintenance burden low.
+  </Accordion>
+  
+  <Accordion title="Testability">
+    Designed with testing in mind, including mock implementations and test utilities.
+  </Accordion>
+</AccordionGroup>
+
+## Quick Start Example
+
+Here's a complete example combining multiple Salt packages:
+
+```go
+package main
+
+import (
+    "context"
+    "github.com/raystack/salt/config"
+    "github.com/raystack/salt/db"
+    "github.com/raystack/salt/log"
+    "github.com/raystack/salt/telemetry"
+)
+
+type Config struct {
+    Database  db.Config         `mapstructure:"database"`
+    Log       LogConfig         `mapstructure:"log"`
+    Telemetry telemetry.Config  `mapstructure:"telemetry"`
+}
+
+type LogConfig struct {
+    Level string `mapstructure:"level" default:"info"`
+}
+
+func main() {
+    // Load configuration
+    loader := config.NewLoader(
+        config.WithFile("config.yaml"),
+        config.WithEnvPrefix("APP"),
+    )
+    
+    cfg := &Config{}
+    if err := loader.Load(cfg); err != nil {
+        panic(err)
+    }
+    
+    // Initialize logger
+    logger := log.NewLogrus(
+        log.LogrusWithLevel(cfg.Log.Level),
+    )
+    
+    // Initialize telemetry
+    ctx := context.Background()
+    cleanup, err := telemetry.Init(ctx, cfg.Telemetry, logger)
+    if err != nil {
+        logger.Fatal("failed to initialize telemetry", "error", err)
+    }
+    defer cleanup()
+    
+    // Connect to database
+    dbClient, err := db.New(cfg.Database)
+    if err != nil {
+        logger.Fatal("failed to connect to database", "error", err)
+    }
+    defer dbClient.Close()
+    
+    logger.Info("application started successfully")
+}
+```
+
+## Package Dependencies
+
+Salt uses the following major dependencies:
+
+- **Configuration**: Viper, Cobra, pflags
+- **Database**: sqlx, golang-migrate
+- **Logging**: logrus
+- **Telemetry**: OpenTelemetry
+- **CLI**: Cobra, survey, tablewriter
+- **Auth**: golang.org/x/oauth2
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/raystack/salt/issues">
+    Report bugs or request features
+  </Card>
+  
+  <Card title="Examples" icon="code" href="https://github.com/raystack/salt/tree/main/examples">
+    Browse example code and usage patterns
+  </Card>
+</CardGroup>

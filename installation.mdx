@@ -1,0 +1,192 @@
+---
+title: Installation
+description: Add Salt to your Go project and start building
+---
+
+## Prerequisites
+
+Before installing Salt, ensure you have:
+
+<AccordionGroup>
+  <Accordion icon="golang" title="Go 1.22 or higher">
+    Salt requires Go 1.22 or later. Check your version:
+    
+    ```bash
+    go version
+    ```
+    
+    If you need to install or upgrade Go, visit [go.dev/doc/install](https://go.dev/doc/install).
+  </Accordion>
+  
+  <Accordion icon="folder" title="A Go module">
+    Your project should be initialized as a Go module:
+    
+    ```bash
+    go mod init github.com/yourusername/yourproject
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Install Salt
+
+Add Salt to your project using `go get`:
+
+```bash
+go get github.com/raystack/salt
+```
+
+This command downloads Salt and adds it to your `go.mod` file.
+
+<Note>
+  Salt uses Go modules for dependency management. The `go get` command automatically resolves and installs all required dependencies.
+</Note>
+
+## Verify installation
+
+Verify that Salt was installed correctly:
+
+```bash
+go mod tidy
+go list -m github.com/raystack/salt
+```
+
+You should see the Salt module version printed:
+
+```bash
+github.com/raystack/salt v0.1.0
+```
+
+## Import packages
+
+Once installed, you can import any Salt package in your Go code:
+
+```go
+package main
+
+import (
+    "github.com/raystack/salt/config"
+    "github.com/raystack/salt/log"
+    "github.com/raystack/salt/db"
+    "github.com/raystack/salt/telemetry"
+)
+```
+
+## Available packages
+
+Salt provides the following packages:
+
+<Tabs>
+  <Tab title="Core">
+    ```go
+    import (
+        "github.com/raystack/salt/config"     // Configuration management
+        "github.com/raystack/salt/log"        // Structured logging
+        "github.com/raystack/salt/utils"      // General utilities
+    )
+    ```
+  </Tab>
+  
+  <Tab title="CLI">
+    ```go
+    import (
+        "github.com/raystack/salt/cli/commander"   // Command management
+        "github.com/raystack/salt/cli/printer"     // Output formatting
+        "github.com/raystack/salt/cli/prompter"    // Interactive prompts
+        "github.com/raystack/salt/cli/terminator"  // Terminal utilities
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Infrastructure">
+    ```go
+    import (
+        "github.com/raystack/salt/db"          // Database operations
+        "github.com/raystack/salt/server/mux"  // Server multiplexing
+        "github.com/raystack/salt/server/spa"  // SPA serving
+        "github.com/raystack/salt/telemetry"   // Observability
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Authentication">
+    ```go
+    import (
+        "github.com/raystack/salt/auth/oidc"   // OpenID Connect
+        "github.com/raystack/salt/auth/audit"  // Audit logging
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Utilities">
+    ```go
+    import (
+        "github.com/raystack/salt/jsondiff"  // JSON diff utilities
+        "github.com/raystack/salt/rql"       // Query language parser
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Modular installation
+
+Salt's modular design means you only download dependencies for packages you actually import. If you only use the `config` and `log` packages, dependencies for other packages won't be pulled into your project.
+
+## Update Salt
+
+To update to the latest version of Salt:
+
+```bash
+go get -u github.com/raystack/salt
+go mod tidy
+```
+
+## Version pinning
+
+To use a specific version of Salt, specify the version tag:
+
+```bash
+go get github.com/raystack/salt@v0.1.0
+```
+
+You can also use commit hashes or branch names:
+
+```bash
+go get github.com/raystack/salt@main
+go get github.com/raystack/salt@abc123
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="circle-exclamation" title="Module not found error">
+    If you see a "module not found" error:
+    
+    1. Ensure you have network access to GitHub
+    2. Check that your `GOPRIVATE` environment variable is configured correctly if using private modules
+    3. Run `go clean -modcache` to clear the module cache
+    4. Try again with `go get github.com/raystack/salt`
+  </Accordion>
+  
+  <Accordion icon="circle-exclamation" title="Version conflicts">
+    If you encounter version conflicts with dependencies:
+    
+    1. Run `go mod tidy` to clean up your dependencies
+    2. Check your `go.mod` file for conflicting versions
+    3. Use `go mod graph` to visualize the dependency tree
+    4. Consider updating other dependencies: `go get -u ./...`
+  </Accordion>
+  
+  <Accordion icon="circle-exclamation" title="Import errors">
+    If imports aren't resolving:
+    
+    1. Run `go mod download` to download all dependencies
+    2. Restart your editor/IDE to refresh the Go module cache
+    3. Verify the import path matches the package name exactly
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<Card title="Quickstart guide" icon="rocket" href="/quickstart">
+  Now that Salt is installed, follow the quickstart guide to build your first application with config loading and logging.
+</Card>

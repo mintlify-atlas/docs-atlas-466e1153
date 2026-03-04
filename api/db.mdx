@@ -1,0 +1,375 @@
+---
+title: 'Database Package'
+description: 'Database client with connection pooling, transactions, and migrations'
+---
+
+The `db` package provides a database client built on top of `sqlx` with support for connection pooling, transactions, and schema migrations.
+
+## Client
+
+### New
+
+```go
+func New(cfg Config) (*Client, error)
+```
+
+Creates a new sqlx database client with connection pooling configured according to the provided Config.
+
+<ParamField path="cfg" type="Config" required>
+  Database configuration containing connection URL, driver, and connection pool settings.
+</ParamField>
+
+<ResponseField name="Client" type="*Client">
+  A configured database client ready for use.
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Returns an error if the connection URL is invalid or the database connection cannot be established.
+</ResponseField>
+
+#### Example
+
+```go
+package main
+
+import (
+    "log"
+    "time"
+    
+    "github.com/raystack/salt/db"
+)
+
+func main() {
+    cfg := db.Config{
+        Driver:          "postgres",
+        URL:             "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+        MaxIdleConns:    10,
+        MaxOpenConns:    25,
+        ConnMaxLifeTime: 5 * time.Minute,
+        MaxQueryTimeout: 30 * time.Second,
+    }
+    
+    client, err := db.New(cfg)
+    if err != nil {
+        log.Fatalf("Failed to connect to database: %v", err)
+    }
+    defer client.Close()
+    
+    // Use the client...
+}
+```
+
+## Client Methods
+
+### WithTimeout
+
+```go
+func (c Client) WithTimeout(ctx context.Context, op func(ctx context.Context) error) error
+```
+
+Executes a database operation with a timeout. The timeout duration is configured via `Config.MaxQueryTimeout`.
+
+<ParamField path="ctx" type="context.Context" required>
+  Parent context for the operation.
+</ParamField>
+
+<ParamField path="op" type="func(ctx context.Context) error" required>
+  The database operation to execute. It receives a context with timeout applied.
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Returns any error from the operation or a timeout error if the operation exceeds the configured timeout.
+</ResponseField>
+
+#### Example
+
+```go
+err := client.WithTimeout(ctx, func(ctx context.Context) error {
+    _, err := client.ExecContext(ctx, "UPDATE users SET active = true WHERE id = ?", userID)
+    return err
+})
+```
+
+### WithTxn
+
+```go
+func (c Client) WithTxn(ctx context.Context, txnOptions sql.TxOptions, txFunc func(*sqlx.Tx) error) error
+```
+
+Executes a function within a database transaction. The transaction is automatically committed if the function succeeds, or rolled back if it returns an error or panics.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the transaction.
+</ParamField>
+
+<ParamField path="txnOptions" type="sql.TxOptions" required>
+  Transaction options including isolation level and read-only mode.
+</ParamField>
+
+<ParamField path="txFunc" type="func(*sqlx.Tx) error" required>
+  The function to execute within the transaction. It receives the transaction object.
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Returns any error from the transaction function, or an error if commit/rollback fails.
+</ResponseField>
+
+#### Example
+
+```go
+import "database/sql"
+
+err := client.WithTxn(ctx, sql.TxOptions{}, func(tx *sqlx.Tx) error {
+    // Insert user
+    result, err := tx.ExecContext(ctx, 
+        "INSERT INTO users (name, email) VALUES (?, ?)", 
+        "John Doe", "john@example.com")
+    if err != nil {
+        return err
+    }
+    
+    userID, _ := result.LastInsertId()
+    
+    // Insert user preferences
+    _, err = tx.ExecContext(ctx,
+        "INSERT INTO preferences (user_id, theme) VALUES (?, ?)",
+        userID, "dark")
+    return err
+})
+```
+
+### ConnectionURL
+
+```go
+func (c *Client) ConnectionURL() string
+```
+
+Returns the database connection URL.
+
+<ResponseField name="string" type="string">
+  The database connection URL as configured.
+</ResponseField>
+
+### Host
+
+```go
+func (c *Client) Host() string
+```
+
+Returns the database host information extracted from the connection URL.
+
+<ResponseField name="string" type="string">
+  The database host (hostname:port).
+</ResponseField>
+
+### Close
+
+```go
+func (c *Client) Close() error
+```
+
+Closes the database connection and releases all resources.
+
+<ResponseField name="error" type="error">
+  Returns an error if closing the connection fails.
+</ResponseField>
+
+## Configuration
+
+### Config
+
+```go
+type Config struct {
+    Driver          string
+    URL             string
+    MaxIdleConns    int
+    MaxOpenConns    int
+    ConnMaxLifeTime time.Duration
+    MaxQueryTimeout time.Duration
+}
+```
+
+Database configuration structure.
+
+<ParamField path="Driver" type="string" required>
+  Database driver name (e.g., "postgres", "mysql").
+</ParamField>
+
+<ParamField path="URL" type="string" required>
+  Database connection URL.
+</ParamField>
+
+<ParamField path="MaxIdleConns" type="int" default="10">
+  Maximum number of idle connections in the pool.
+</ParamField>
+
+<ParamField path="MaxOpenConns" type="int" default="10">
+  Maximum number of open connections to the database.
+</ParamField>
+
+<ParamField path="ConnMaxLifeTime" type="time.Duration" default="10ms">
+  Maximum lifetime of a connection before it's closed and recreated.
+</ParamField>
+
+<ParamField path="MaxQueryTimeout" type="time.Duration" default="100ms">
+  Maximum duration for query execution when using WithTimeout.
+</ParamField>
+
+#### Example Configuration
+
+```yaml
+driver: postgres
+url: postgres://user:password@localhost:5432/mydb?sslmode=disable
+max_idle_conns: 10
+max_open_conns: 25
+conn_max_life_time: 5m
+max_query_timeout: 30s
+```
+
+## Migrations
+
+### RunMigrations
+
+```go
+func RunMigrations(config Config, embeddedMigrations fs.FS, resourcePath string) error
+```
+
+Runs all pending database migrations from an embedded file system. Uses the `golang-migrate` library under the hood.
+
+<ParamField path="config" type="Config" required>
+  Database configuration for connecting to the database.
+</ParamField>
+
+<ParamField path="embeddedMigrations" type="fs.FS" required>
+  Embedded file system containing migration files.
+</ParamField>
+
+<ParamField path="resourcePath" type="string" required>
+  Path within the embedded file system where migration files are located.
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Returns an error if migrations fail. Returns nil if no migrations are needed or all migrations succeed.
+</ResponseField>
+
+#### Example
+
+```go
+package main
+
+import (
+    "embed"
+    "log"
+    
+    "github.com/raystack/salt/db"
+)
+
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
+
+func main() {
+    cfg := db.Config{
+        Driver: "postgres",
+        URL:    "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+    }
+    
+    err := db.RunMigrations(cfg, migrationFiles, "migrations")
+    if err != nil {
+        log.Fatalf("Migration failed: %v", err)
+    }
+    
+    log.Println("Migrations completed successfully")
+}
+```
+
+### RunRollback
+
+```go
+func RunRollback(config Config, embeddedMigrations fs.FS, resourcePath string) error
+```
+
+Rolls back the last applied migration.
+
+<ParamField path="config" type="Config" required>
+  Database configuration for connecting to the database.
+</ParamField>
+
+<ParamField path="embeddedMigrations" type="fs.FS" required>
+  Embedded file system containing migration files.
+</ParamField>
+
+<ParamField path="resourcePath" type="string" required>
+  Path within the embedded file system where migration files are located.
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Returns an error if rollback fails. Returns nil if no migrations to rollback or rollback succeeds.
+</ResponseField>
+
+#### Example
+
+```go
+err := db.RunRollback(cfg, migrationFiles, "migrations")
+if err != nil {
+    log.Fatalf("Rollback failed: %v", err)
+}
+```
+
+## Best Practices
+
+### Connection Pooling
+
+Configure connection pool size based on your workload:
+
+```go
+cfg := db.Config{
+    MaxIdleConns:    10,  // Keep some connections warm
+    MaxOpenConns:    25,  // Limit total connections
+    ConnMaxLifeTime: 5 * time.Minute,  // Recycle connections
+}
+```
+
+### Transaction Management
+
+Always use `WithTxn` for multi-statement operations:
+
+```go
+err := client.WithTxn(ctx, sql.TxOptions{}, func(tx *sqlx.Tx) error {
+    // All operations here are atomic
+    // Automatic rollback on error
+    return nil
+})
+```
+
+### Query Timeouts
+
+Use `WithTimeout` to prevent long-running queries:
+
+```go
+err := client.WithTimeout(ctx, func(ctx context.Context) error {
+    // This query will timeout after MaxQueryTimeout
+    return client.ExecContext(ctx, query)
+})
+```
+
+### Migration Files
+
+Organize migrations with sequential numbering:
+
+```
+migrations/
+  001_create_users_table.up.sql
+  001_create_users_table.down.sql
+  002_add_email_index.up.sql
+  002_add_email_index.down.sql
+```
+
+## Supported Databases
+
+The package supports any database driver compatible with `database/sql`, including:
+
+- PostgreSQL (`github.com/lib/pq`)
+- MySQL (`github.com/go-sql-driver/mysql`)
+- SQLite (`github.com/mattn/go-sqlite3`)
+
+Migrations are supported for PostgreSQL and MySQL through the `golang-migrate` library.

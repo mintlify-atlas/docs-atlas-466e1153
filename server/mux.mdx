@@ -1,0 +1,279 @@
+---
+title: 'HTTP Multiplexer'
+description: 'Serve multiple protocol servers with graceful shutdown support'
+---
+
+The `mux` package provides utilities for serving multiple protocol servers (HTTP and gRPC) on different ports with graceful shutdown capabilities.
+
+## Overview
+
+The multiplexer allows you to start TCP listeners and serve registered protocol servers, handling graceful shutdown when the context is cancelled. It uses the `oklog/run` package to manage multiple server lifecycles concurrently.
+
+## Key Features
+
+- **Multi-protocol support**: Serve HTTP and gRPC servers simultaneously
+- **Graceful shutdown**: Coordinated shutdown with configurable grace period
+- **Concurrent execution**: Run multiple servers using run groups
+- **Error handling**: Proper error propagation and logging
+
+## API Reference
+
+### Serve
+
+```go
+func Serve(ctx context.Context, opts ...Option) error
+```
+
+Starts TCP listeners and serves the registered protocol servers of the given serve targets. Blocks until the servers exit. Context can be cancelled to perform graceful shutdown.
+
+**Parameters:**
+- `ctx`: Context for controlling server lifecycle and graceful shutdown
+- `opts`: Variable number of Option functions for configuration
+
+**Returns:**
+- Error if server startup or shutdown fails
+
+**Location:** `/home/daytona/workspace/source/server/mux/mux.go:21`
+
+### Options
+
+#### WithHTTPTarget
+
+```go
+func WithHTTPTarget(addr string, srv *http.Server) Option
+```
+
+Registers an HTTP server to be served on the specified address.
+
+**Parameters:**
+- `addr`: TCP address to listen on (e.g., `:8080` or `localhost:8080`)
+- `srv`: Configured `*http.Server` instance
+
+**Location:** `/home/daytona/workspace/source/server/mux/option.go:13`
+
+#### WithGRPCTarget
+
+```go
+func WithGRPCTarget(addr string, srv *grpc.Server) Option
+```
+
+Registers a gRPC server to be served on the specified address.
+
+**Parameters:**
+- `addr`: TCP address to listen on (e.g., `:9090` or `localhost:9090`)
+- `srv`: Configured `*grpc.Server` instance
+
+**Location:** `/home/daytona/workspace/source/server/mux/option.go:21`
+
+#### WithGracePeriod
+
+```go
+func WithGracePeriod(d time.Duration) Option
+```
+
+Sets the wait duration for graceful shutdown. Default is 10 seconds.
+
+**Parameters:**
+- `d`: Duration to wait for graceful shutdown (values less than or equal to 0 use default)
+
+**Location:** `/home/daytona/workspace/source/server/mux/option.go:32`
+
+## Usage Examples
+
+### Basic HTTP Server
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "net/http"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/yourusername/salt/server/mux"
+)
+
+func main() {
+    // Create HTTP server
+    httpServer := &http.Server{
+        Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            w.Write([]byte("Hello, World!"))
+        }),
+    }
+
+    // Setup context with cancellation
+    ctx, cancel := signal.NotifyContext(context.Background(), 
+        os.Interrupt, syscall.SIGTERM)
+    defer cancel()
+
+    // Serve with mux
+    if err := mux.Serve(ctx, 
+        mux.WithHTTPTarget(":8080", httpServer),
+    ); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### Multi-Protocol Server
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "net/http"
+    "os"
+    "os/signal"
+    "syscall"
+    "time"
+
+    "github.com/yourusername/salt/server/mux"
+    "google.golang.org/grpc"
+)
+
+func main() {
+    // Create HTTP server
+    httpServer := &http.Server{
+        Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            w.Write([]byte("HTTP endpoint"))
+        }),
+    }
+
+    // Create gRPC server
+    grpcServer := grpc.NewServer()
+    // Register your gRPC services here...
+
+    // Setup context with cancellation
+    ctx, cancel := signal.NotifyContext(context.Background(), 
+        os.Interrupt, syscall.SIGTERM)
+    defer cancel()
+
+    // Serve both protocols with custom grace period
+    if err := mux.Serve(ctx,
+        mux.WithHTTPTarget(":8080", httpServer),
+        mux.WithGRPCTarget(":9090", grpcServer),
+        mux.WithGracePeriod(30*time.Second),
+    ); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### Multiple HTTP Servers
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "net/http"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/yourusername/salt/server/mux"
+)
+
+func main() {
+    // Public API server
+    publicServer := &http.Server{
+        Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            w.Write([]byte("Public API"))
+        }),
+    }
+
+    // Admin API server
+    adminServer := &http.Server{
+        Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            w.Write([]byte("Admin API"))
+        }),
+    }
+
+    // Setup context
+    ctx, cancel := signal.NotifyContext(context.Background(), 
+        os.Interrupt, syscall.SIGTERM)
+    defer cancel()
+
+    // Serve on different ports
+    if err := mux.Serve(ctx,
+        mux.WithHTTPTarget(":8080", publicServer),
+        mux.WithHTTPTarget(":8081", adminServer),
+    ); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+## Graceful Shutdown
+
+The multiplexer handles graceful shutdown automatically when the context is cancelled:
+
+1. **Signal Detection**: Context cancellation triggers shutdown sequence
+2. **Grace Period**: Servers are given time to complete in-flight requests
+3. **Forced Shutdown**: After grace period expires, servers are forcefully stopped
+4. **Error Logging**: Shutdown errors are logged for debugging
+
+```go
+ctx, cancel := signal.NotifyContext(context.Background(), 
+    os.Interrupt, syscall.SIGTERM)
+defer cancel()
+
+// Custom grace period of 30 seconds
+err := mux.Serve(ctx,
+    mux.WithHTTPTarget(":8080", httpServer),
+    mux.WithGracePeriod(30*time.Second),
+)
+```
+
+## Implementation Details
+
+### Default Configuration
+
+- **Grace Period**: 10 seconds (`defaultGracePeriod`)
+- **Error Handling**: Errors are logged with `[ERROR]` prefix
+- **Minimum Targets**: At least one serve target must be configured
+
+### Server Lifecycle
+
+The multiplexer uses `oklog/run` to manage server lifecycles:
+
+1. **Startup**: TCP listeners are created for each target
+2. **Execution**: Each server runs in its own goroutine
+3. **Monitoring**: Context cancellation is monitored
+4. **Shutdown**: All servers shut down gracefully when triggered
+
+**Location:** `/home/daytona/workspace/source/server/mux/mux.go:41-73`
+
+## Error Handling
+
+The package handles several error conditions:
+
+- **No targets configured**: Returns error if no serve targets are provided
+- **Listen failures**: Returns error if TCP listener cannot be created
+- **Serve errors**: Logged but don't necessarily stop other servers
+- **Shutdown errors**: Logged when graceful shutdown fails
+
+```go
+if err := mux.Serve(ctx, opts...); err != nil {
+    log.Printf("Server error: %v", err)
+    // Handle error appropriately
+}
+```
+
+## Best Practices
+
+1. **Always use signal context**: Handle OS signals for clean shutdown
+2. **Configure appropriate grace period**: Consider your request timeouts
+3. **Test shutdown behavior**: Ensure in-flight requests complete properly
+4. **Monitor logs**: Check for shutdown errors in production
+5. **Set reasonable timeouts**: Configure read/write timeouts on HTTP servers
+
+## See Also
+
+- [SPA Server](/server/spa) - Single-page application server utilities

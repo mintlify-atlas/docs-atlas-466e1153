@@ -1,0 +1,333 @@
+---
+title: 'OpenID Connect Authentication'
+description: 'Implement OIDC authentication flows with PKCE support in your applications'
+icon: 'shield-halved'
+---
+
+## Overview
+
+Salt provides a complete OpenID Connect (OIDC) authentication implementation with built-in support for PKCE (Proof Key for Code Exchange), browser-based authentication flows, and Google Service Account integration.
+
+## Key Features
+
+- **PKCE Flow**: RFC 7636 compliant implementation for enhanced security
+- **Browser Authentication**: Automatic browser-based OAuth2 flows
+- **Service Account Support**: Google Service Account token generation
+- **Token Management**: Automatic token exchange and ID token extraction
+
+## Token Source
+
+### NewTokenSource
+
+Creates a new OIDC token source with PKCE support.
+
+```go
+func NewTokenSource(
+    ctx context.Context,
+    conf *oauth2.Config,
+    audience string,
+) oauth2.TokenSource
+```
+
+**Parameters:**
+- `ctx` - Context for the authentication flow
+- `conf` - OAuth2 configuration with client credentials
+- `audience` - OIDC audience claim value
+
+**Returns:** An `oauth2.TokenSource` that handles the complete authentication flow
+
+### Example: Basic OIDC Authentication
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "log"
+    "os"
+    "strings"
+
+    "github.com/raystack/salt/auth/oidc"
+    "golang.org/x/oauth2"
+    "golang.org/x/oauth2/google"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // Configure OAuth2 settings
+    cfg := &oauth2.Config{
+        ClientID:     os.Getenv("CLIENT_ID"),
+        ClientSecret: os.Getenv("CLIENT_SECRET"),
+        Endpoint:     google.Endpoint,
+        RedirectURL:  "http://localhost:5454",
+        Scopes:       strings.Split(os.Getenv("OIDC_SCOPES"), ","),
+    }
+    
+    // Create token source
+    aud := os.Getenv("OIDC_AUDIENCE")
+    ts := oidc.NewTokenSource(ctx, cfg, aud)
+    
+    // Get token (triggers browser-based auth flow)
+    token, err := ts.Token()
+    if err != nil {
+        log.Fatalf("Authentication failed: %v", err)
+    }
+    
+    // Token contains ID token in AccessToken field
+    json.NewEncoder(os.Stdout).Encode(map[string]interface{}{
+        "token_type":    token.TokenType,
+        "access_token":  token.AccessToken,
+        "expiry":        token.Expiry,
+        "refresh_token": token.RefreshToken,
+        "id_token":      token.Extra("id_token"),
+    })
+}
+```
+
+## Google Service Account
+
+### NewGoogleServiceAccountTokenSource
+
+Creates a token source using Google Service Account credentials.
+
+```go
+func NewGoogleServiceAccountTokenSource(
+    ctx context.Context,
+    keyFile string,
+    aud string,
+) (oauth2.TokenSource, error)
+```
+
+**Parameters:**
+- `ctx` - Context for token generation
+- `keyFile` - Path to service account JSON key file
+- `aud` - Target audience for the token
+
+**Returns:** Token source and error
+
+### Example: Service Account Authentication
+
+```go
+import (
+    "context"
+    "log"
+    
+    "github.com/raystack/salt/auth/oidc"
+)
+
+func authenticateWithServiceAccount() {
+    ctx := context.Background()
+    
+    ts, err := oidc.NewGoogleServiceAccountTokenSource(
+        ctx,
+        "/path/to/service-account.json",
+        "https://your-api.example.com",
+    )
+    if err != nil {
+        log.Fatalf("Failed to create token source: %v", err)
+    }
+    
+    token, err := ts.Token()
+    if err != nil {
+        log.Fatalf("Failed to get token: %v", err)
+    }
+    
+    // Use token for API requests
+    log.Printf("Token acquired: %s", token.AccessToken)
+}
+```
+
+## CLI Integration
+
+### LoginCmd
+
+Provides a Cobra command for CLI-based authentication.
+
+```go
+func LoginCmd(
+    cfg *oauth2.Config,
+    aud string,
+    keyFilePath string,
+    onTokenOrErr func(t *oauth2.Token, err error),
+) *cobra.Command
+```
+
+**Parameters:**
+- `cfg` - OAuth2 configuration
+- `aud` - OIDC audience
+- `keyFilePath` - Optional service account key file path
+- `onTokenOrErr` - Callback function to handle token or error
+
+### Example: CLI Login Command
+
+```go
+import (
+    "encoding/json"
+    "log"
+    "os"
+    
+    "github.com/raystack/salt/auth/oidc"
+    "golang.org/x/oauth2"
+    "golang.org/x/oauth2/google"
+)
+
+func main() {
+    cfg := &oauth2.Config{
+        ClientID:     os.Getenv("CLIENT_ID"),
+        ClientSecret: os.Getenv("CLIENT_SECRET"),
+        Endpoint:     google.Endpoint,
+        RedirectURL:  "http://localhost:5454",
+        Scopes:       []string{"email", "profile"},
+    }
+    
+    aud := os.Getenv("OIDC_AUDIENCE")
+    keyFile := os.Getenv("GOOGLE_SERVICE_ACCOUNT")
+    
+    onTokenOrErr := func(t *oauth2.Token, err error) {
+        if err != nil {
+            log.Fatalf("Login failed: %v", err)
+        }
+        
+        json.NewEncoder(os.Stdout).Encode(map[string]interface{}{
+            "token_type":    t.TokenType,
+            "access_token":  t.AccessToken,
+            "expiry":        t.Expiry,
+            "refresh_token": t.RefreshToken,
+            "id_token":      t.Extra("id_token"),
+        })
+    }
+    
+    cmd := oidc.LoginCmd(cfg, aud, keyFile, onTokenOrErr)
+    if err := cmd.Execute(); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+## Authentication Flow
+
+The OIDC implementation follows these steps:
+
+### 1. PKCE Parameter Generation
+
+```go
+// Automatically generates:
+// - code_verifier: Random 32-byte string
+// - code_challenge: SHA256 hash of verifier
+// - code_challenge_method: "S256"
+```
+
+### 2. Authorization Request
+
+Opens browser to provider's authorization endpoint with:
+- State parameter for CSRF protection
+- PKCE challenge parameters
+- Audience claim
+- OpenID scope
+
+### 3. Callback Handling
+
+Starts local HTTP server to receive the authorization code:
+- Validates state parameter
+- Extracts authorization code
+- Displays success page in browser
+
+### 4. Token Exchange
+
+Exchanges authorization code for tokens:
+- Includes PKCE code verifier
+- Receives access token, refresh token, and ID token
+- Returns ID token as the primary access token
+
+## Configuration
+
+### OAuth2 Config Structure
+
+```go
+config := &oauth2.Config{
+    ClientID:     "your-client-id",
+    ClientSecret: "your-client-secret",
+    Endpoint: oauth2.Endpoint{
+        AuthURL:  "https://accounts.google.com/o/oauth2/auth",
+        TokenURL: "https://oauth2.googleapis.com/token",
+    },
+    RedirectURL: "http://localhost:5454",
+    Scopes:      []string{"openid", "email", "profile"},
+}
+```
+
+### Environment Variables
+
+```bash
+# OAuth2 credentials
+export CLIENT_ID="your-client-id"
+export CLIENT_SECRET="your-client-secret"
+
+# OIDC settings
+export OIDC_AUDIENCE="https://your-api.example.com"
+export OIDC_SCOPES="email,profile"
+
+# Optional: Service account
+export GOOGLE_SERVICE_ACCOUNT="/path/to/service-account.json"
+```
+
+## Security Features
+
+### PKCE (RFC 7636)
+
+Prevents authorization code interception attacks:
+- Uses SHA256 code challenge method
+- Generates cryptographically random verifiers
+- No base64 padding for URL safety
+
+### State Parameter
+
+Protects against CSRF attacks:
+- Random 10-byte state value
+- Validated on callback
+- Authentication fails if state mismatches
+
+### Secure Token Handling
+
+From `source_oidc.go:76-80`:
+```go
+idToken, ok := tok.Extra("id_token").(string)
+if !ok {
+    return nil, errors.New("id_token not found in token response")
+}
+tok.AccessToken = idToken
+```
+
+## Error Handling
+
+```go
+ts := oidc.NewTokenSource(ctx, cfg, aud)
+token, err := ts.Token()
+if err != nil {
+    // Handle specific errors
+    switch {
+    case strings.Contains(err.Error(), "state"):
+        log.Fatal("CSRF validation failed")
+    case strings.Contains(err.Error(), "id_token"):
+        log.Fatal("ID token not found in response")
+    default:
+        log.Fatalf("Authentication failed: %v", err)
+    }
+}
+```
+
+## Best Practices
+
+1. **Use HTTPS in Production**: Always use HTTPS redirect URLs in production
+2. **Secure Credentials**: Never hardcode client secrets; use environment variables
+3. **Token Refresh**: Implement token refresh logic for long-running applications
+4. **Timeout Handling**: Set appropriate context timeouts for authentication flows
+5. **Error Recovery**: Provide clear error messages and recovery options
+
+## References
+
+- **Source**: `~/workspace/source/auth/oidc/source_oidc.go`
+- **RFC 7636**: PKCE specification
+- **OpenID Connect**: Core 1.0 specification

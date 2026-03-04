@@ -1,0 +1,177 @@
+---
+title: Introduction to Salt
+description: A modular collection of Go libraries for building cloud-native applications in the Raystack ecosystem
+---
+
+## What is Salt?
+
+Salt is a Golang utility library that provides a collection of modular, reusable packages designed to simplify and enhance application development. It offers battle-tested components for common tasks, including configuration management, CLI utilities, authentication, logging, database operations, and observability.
+
+Built and maintained by [Raystack](https://github.com/raystack), Salt powers production applications across the Raystack ecosystem.
+
+## Why use Salt?
+
+Salt eliminates the need to write boilerplate code for common application needs, allowing you to focus on building your core business logic.
+
+<CardGroup cols={2}>
+  <Card title="Production-ready" icon="rocket">
+    Battle-tested libraries used in production across the Raystack ecosystem
+  </Card>
+  <Card title="Modular design" icon="cubes">
+    Import only what you need without unnecessary dependencies
+  </Card>
+  <Card title="Type-safe" icon="shield">
+    Full Go type safety with comprehensive validation support
+  </Card>
+  <Card title="Cloud-native" icon="cloud">
+    Built for modern infrastructure with observability and graceful shutdowns
+  </Card>
+</CardGroup>
+
+## Key features
+
+### Configuration management
+
+Load and validate configuration from multiple sources with a clear precedence order:
+
+```go
+loader := config.NewLoader(
+    config.WithFile("./config.yaml"),
+    config.WithEnvPrefix("MYAPP"),
+    config.WithFlags(flags),
+)
+```
+
+Configuration sources are merged with the following precedence (highest to lowest):
+1. Command-line flags
+2. Environment variables
+3. Configuration files
+4. Default values
+
+### Structured logging
+
+Choose between Logrus and Zap implementations with a unified interface:
+
+```go
+// Using Logrus
+logger := log.NewLogrus(
+    log.LogrusWithLevel("info"),
+)
+
+// Using Zap
+logger := log.NewZap(
+    log.ZapWithConfig(zapConfig),
+)
+
+logger.Info("request processed", "duration", duration, "status", 200)
+```
+
+### Database operations
+
+Connect to databases with connection pooling, timeouts, and transaction support:
+
+```go
+client, err := db.New(db.Config{
+    Driver:          "postgres",
+    URL:            "postgres://user:pass@localhost/db",
+    MaxOpenConns:   25,
+    MaxIdleConns:   5,
+    ConnMaxLifeTime: 5 * time.Minute,
+})
+```
+
+### CLI utilities
+
+Build interactive command-line tools with:
+- **Commander**: Command management and documentation generation
+- **Printer**: Formatted output (tables, JSON, YAML, markdown)
+- **Prompter**: Interactive user prompts and surveys
+- **Terminator**: Terminal utilities and browser integration
+
+### Authentication & security
+
+- **OIDC**: OpenID Connect authentication flows and token management
+- **Audit**: Security event logging and compliance tracking
+
+### Observability
+
+Integrate OpenTelemetry for metrics, traces, and monitoring:
+
+```go
+cleanup, err := telemetry.Init(ctx, telemetry.Config{
+    AppName:    "my-service",
+    AppVersion: "1.0.0",
+}, logger)
+defer cleanup()
+```
+
+## Package overview
+
+<CardGroup cols={2}>
+  <Card title="config" icon="gear" href="/packages/config">
+    Configuration management with environment variables, files, and defaults
+  </Card>
+  
+  <Card title="log" icon="file-lines" href="/packages/log">
+    Structured logging with Logrus and Zap support
+  </Card>
+  
+  <Card title="db" icon="database" href="/packages/db">
+    Database connections, migrations, and transaction helpers
+  </Card>
+  
+  <Card title="cli" icon="terminal" href="/packages/cli">
+    Command-line tools, prompts, and formatted output
+  </Card>
+  
+  <Card title="auth" icon="shield-halved" href="/packages/auth">
+    OIDC authentication and audit logging
+  </Card>
+  
+  <Card title="server" icon="server" href="/packages/server">
+    HTTP server utilities and SPA serving
+  </Card>
+  
+  <Card title="telemetry" icon="chart-line" href="/packages/telemetry">
+    OpenTelemetry integration for observability
+  </Card>
+  
+  <Card title="jsondiff" icon="code-compare" href="/packages/jsondiff">
+    JSON diff calculation and reconstruction
+  </Card>
+</CardGroup>
+
+## Who uses Salt?
+
+Salt is used across the Raystack ecosystem to power production applications including:
+- API services and microservices
+- CLI tools and utilities
+- Data processing pipelines
+- Infrastructure management tools
+
+## Requirements
+
+- Go 1.22 or higher
+- Compatible with Linux, macOS, and Windows
+
+## Next steps
+
+<Steps>
+  <Step title="Install Salt">
+    Get started by installing Salt in your Go project
+    
+    [Installation guide →](/installation)
+  </Step>
+  
+  <Step title="Quick start">
+    Build your first application with Salt
+    
+    [Quickstart guide →](/quickstart)
+  </Step>
+  
+  <Step title="Explore packages">
+    Dive deeper into specific packages
+    
+    [Package overview →](/packages/overview)
+  </Step>
+</Steps>

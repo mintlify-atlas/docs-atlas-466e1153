@@ -1,0 +1,591 @@
+---
+title: Telemetry Package
+description: OpenTelemetry integration for metrics and distributed tracing
+icon: chart-line
+---
+
+The `telemetry` package provides OpenTelemetry integration for collecting metrics and distributed traces from Go applications.
+
+## Features
+
+- **OpenTelemetry SDK**: Full integration with OpenTelemetry standards
+- **Metrics Collection**: Host metrics, runtime metrics, and custom metrics
+- **Distributed Tracing**: Trace sampling and export via OTLP
+- **OTLP Export**: gRPC-based export to OpenTelemetry collectors
+- **Resource Attributes**: Configurable service identification
+- **Automatic Instrumentation**: Host and runtime metrics out of the box
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/telemetry
+```
+
+## Quick Start
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    
+    "github.com/raystack/salt/log"
+    "github.com/raystack/salt/telemetry"
+)
+
+func main() {
+    logger := log.NewLogrus(log.LogrusWithLevel("info"))
+    
+    cfg := telemetry.Config{
+        AppName:    "myapp",
+        AppVersion: "1.0.0",
+        OpenTelemetry: telemetry.OpenTelemetryConfig{
+            Enabled:                true,
+            CollectorAddr:          "localhost:4317",
+            TraceSampleProbability: 1.0,
+        },
+    }
+    
+    ctx := context.Background()
+    cleanup, err := telemetry.Init(ctx, cfg, logger)
+    if err != nil {
+        log.Fatal("Failed to initialize telemetry:", err)
+    }
+    defer cleanup()
+    
+    // Your application code
+    log.Println("Telemetry initialized")
+}
+```
+
+## Configuration
+
+### Config
+
+```go
+type Config struct {
+    AppVersion    string
+    AppName       string              `yaml:"app_name" mapstructure:"app_name" default:"service"`
+    OpenTelemetry OpenTelemetryConfig `yaml:"open_telemetry" mapstructure:"open_telemetry"`
+}
+```
+
+### OpenTelemetryConfig
+
+```go
+type OpenTelemetryConfig struct {
+    Enabled                      bool          `yaml:"enabled" mapstructure:"enabled" default:"false"`
+    CollectorAddr                string        `yaml:"collector_addr" mapstructure:"collector_addr" default:"localhost:4317"`
+    PeriodicReadInterval         time.Duration `yaml:"periodic_read_interval" mapstructure:"periodic_read_interval" default:"1s"`
+    TraceSampleProbability       float64       `yaml:"trace_sample_probability" mapstructure:"trace_sample_probability" default:"1"`
+    VerboseResourceLabelsEnabled bool          `yaml:"verbose_resource_labels_enabled" mapstructure:"verbose_resource_labels_enabled" default:"false"`
+}
+```
+
+**Configuration file example:**
+
+```yaml
+app_name: myapp
+
+open_telemetry:
+  enabled: true
+  collector_addr: localhost:4317
+  periodic_read_interval: 5s
+  trace_sample_probability: 0.1  # Sample 10% of traces
+  verbose_resource_labels_enabled: false
+```
+
+## Initialization
+
+### Init
+
+```go
+func Init(ctx context.Context, cfg Config, logger log.Logger) (cleanUp func(), err error)
+```
+
+Initializes OpenTelemetry with metrics and tracing.
+
+**Example:**
+
+```go
+ctx := context.Background()
+logger := log.NewLogrus()
+
+cfg := telemetry.Config{
+    AppName:    "payment-service",
+    AppVersion: "2.1.0",
+    OpenTelemetry: telemetry.OpenTelemetryConfig{
+        Enabled:                true,
+        CollectorAddr:          "otel-collector:4317",
+        TraceSampleProbability: 0.5,  // Sample 50% of traces
+    },
+}
+
+cleanup, err := telemetry.Init(ctx, cfg, logger)
+if err != nil {
+    log.Fatal(err)
+}
+defer cleanup()
+```
+
+## Metrics
+
+The package automatically collects:
+
+- **Host Metrics**: CPU, memory, disk, network usage
+- **Runtime Metrics**: Go runtime statistics (goroutines, GC, memory)
+
+### Custom Metrics
+
+You can add custom metrics using the OpenTelemetry SDK:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/metric"
+)
+
+func main() {
+    // Initialize telemetry first
+    cleanup, _ := telemetry.Init(ctx, cfg, logger)
+    defer cleanup()
+    
+    // Create a meter
+    meter := otel.Meter("myapp")
+    
+    // Create a counter
+    requestCounter, err := meter.Int64Counter(
+        "http.requests",
+        metric.WithDescription("Total HTTP requests"),
+        metric.WithUnit("1"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Increment counter
+    requestCounter.Add(context.Background(), 1,
+        metric.WithAttributes(
+            attribute.String("method", "GET"),
+            attribute.String("path", "/api/users"),
+        ),
+    )
+}
+```
+
+### Histogram Example
+
+```go
+// Create a histogram for request duration
+requestDuration, err := meter.Float64Histogram(
+    "http.request.duration",
+    metric.WithDescription("HTTP request duration"),
+    metric.WithUnit("ms"),
+)
+
+// Record a measurement
+start := time.Now()
+// ... handle request ...
+duration := time.Since(start).Milliseconds()
+
+requestDuration.Record(context.Background(), float64(duration),
+    metric.WithAttributes(
+        attribute.String("method", "POST"),
+        attribute.String("path", "/api/orders"),
+        attribute.Int("status", 200),
+    ),
+)
+```
+
+## Distributed Tracing
+
+### Creating Spans
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+    
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+)
+
+func processOrder(ctx context.Context, orderID string) error {
+    tracer := otel.Tracer("myapp")
+    
+    ctx, span := tracer.Start(ctx, "processOrder")
+    defer span.End()
+    
+    span.SetAttributes(
+        attribute.String("order.id", orderID),
+        attribute.String("order.status", "pending"),
+    )
+    
+    // Call sub-operations
+    if err := validateOrder(ctx, orderID); err != nil {
+        span.RecordError(err)
+        return err
+    }
+    
+    if err := chargePayment(ctx, orderID); err != nil {
+        span.RecordError(err)
+        return err
+    }
+    
+    span.SetAttributes(attribute.String("order.status", "completed"))
+    return nil
+}
+
+func validateOrder(ctx context.Context, orderID string) error {
+    tracer := otel.Tracer("myapp")
+    _, span := tracer.Start(ctx, "validateOrder")
+    defer span.End()
+    
+    time.Sleep(10 * time.Millisecond)
+    return nil
+}
+
+func chargePayment(ctx context.Context, orderID string) error {
+    tracer := otel.Tracer("myapp")
+    _, span := tracer.Start(ctx, "chargePayment")
+    defer span.End()
+    
+    time.Sleep(50 * time.Millisecond)
+    return nil
+}
+```
+
+### HTTP Instrumentation
+
+The telemetry package includes gRPC and HTTP client instrumentation in the `otelgrpc` and `otelhhtpclient` subpackages:
+
+```go
+import (
+    "net/http"
+    
+    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+)
+
+func main() {
+    // Initialize telemetry
+    cleanup, _ := telemetry.Init(ctx, cfg, logger)
+    defer cleanup()
+    
+    // Wrap HTTP handler with instrumentation
+    mux := http.NewServeMux()
+    mux.HandleFunc("/api/users", handleUsers)
+    
+    handler := otelhttp.NewHandler(mux, "myapp")
+    
+    http.ListenAndServe(":8080", handler)
+}
+```
+
+## Trace Sampling
+
+Control which traces are collected using the `TraceSampleProbability` setting:
+
+```go
+cfg := telemetry.OpenTelemetryConfig{
+    TraceSampleProbability: 0.1,  // Sample 10% of traces
+}
+```
+
+- `1.0` = 100% sampling (collect all traces) - good for development
+- `0.1` = 10% sampling - good for production with high traffic
+- `0.01` = 1% sampling - good for very high traffic services
+
+## Resource Attributes
+
+By default, minimal resource attributes are included:
+- `service.name`
+- `service.version`
+
+Enable verbose labels for additional context:
+
+```go
+cfg := telemetry.OpenTelemetryConfig{
+    VerboseResourceLabelsEnabled: true,
+}
+```
+
+This adds:
+- Telemetry SDK version
+- OS information
+- Host information
+- Process information
+- Runtime name and version
+
+## Complete Example: Web Service with Telemetry
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "log"
+    "net/http"
+    "time"
+    
+    "github.com/raystack/salt/log"
+    "github.com/raystack/salt/telemetry"
+    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/metric"
+)
+
+var (
+    requestCounter metric.Int64Counter
+    requestDuration metric.Float64Histogram
+)
+
+func main() {
+    // Setup logger
+    logger := log.NewLogrus(log.LogrusWithLevel("info"))
+    
+    // Initialize telemetry
+    cfg := telemetry.Config{
+        AppName:    "api-server",
+        AppVersion: "1.0.0",
+        OpenTelemetry: telemetry.OpenTelemetryConfig{
+            Enabled:                true,
+            CollectorAddr:          "localhost:4317",
+            PeriodicReadInterval:   5 * time.Second,
+            TraceSampleProbability: 1.0,
+        },
+    }
+    
+    ctx := context.Background()
+    cleanup, err := telemetry.Init(ctx, cfg, logger)
+    if err != nil {
+        log.Fatal("Failed to initialize telemetry:", err)
+    }
+    defer cleanup()
+    
+    // Setup custom metrics
+    meter := otel.Meter("api-server")
+    
+    requestCounter, err = meter.Int64Counter(
+        "http.requests.total",
+        metric.WithDescription("Total HTTP requests"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    requestDuration, err = meter.Float64Histogram(
+        "http.request.duration",
+        metric.WithDescription("HTTP request duration in milliseconds"),
+        metric.WithUnit("ms"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Setup HTTP handlers
+    mux := http.NewServeMux()
+    mux.HandleFunc("/api/users", handleUsers)
+    mux.HandleFunc("/api/orders", handleOrders)
+    
+    // Wrap with OpenTelemetry instrumentation
+    handler := otelhttp.NewHandler(mux, "api-server")
+    
+    logger.Info("Starting server on :8080")
+    log.Fatal(http.ListenAndServe(":8080", handler))
+}
+
+func handleUsers(w http.ResponseWriter, r *http.Request) {
+    start := time.Now()
+    ctx := r.Context()
+    
+    tracer := otel.Tracer("api-server")
+    ctx, span := tracer.Start(ctx, "handleUsers")
+    defer span.End()
+    
+    // Simulate processing
+    time.Sleep(10 * time.Millisecond)
+    
+    users := []string{"Alice", "Bob", "Charlie"}
+    
+    span.SetAttributes(
+        attribute.Int("user.count", len(users)),
+    )
+    
+    // Record metrics
+    duration := time.Since(start).Milliseconds()
+    requestCounter.Add(ctx, 1,
+        metric.WithAttributes(
+            attribute.String("method", r.Method),
+            attribute.String("path", r.URL.Path),
+            attribute.Int("status", 200),
+        ),
+    )
+    requestDuration.Record(ctx, float64(duration),
+        metric.WithAttributes(
+            attribute.String("method", r.Method),
+            attribute.String("path", r.URL.Path),
+        ),
+    )
+    
+    json.NewEncoder(w).Encode(users)
+}
+
+func handleOrders(w http.ResponseWriter, r *http.Request) {
+    start := time.Now()
+    ctx := r.Context()
+    
+    tracer := otel.Tracer("api-server")
+    ctx, span := tracer.Start(ctx, "handleOrders")
+    defer span.End()
+    
+    // Simulate processing
+    time.Sleep(20 * time.Millisecond)
+    
+    orders := []map[string]interface{}{
+        {"id": 1, "total": 100.50},
+        {"id": 2, "total": 250.00},
+    }
+    
+    span.SetAttributes(
+        attribute.Int("order.count", len(orders)),
+    )
+    
+    duration := time.Since(start).Milliseconds()
+    requestCounter.Add(ctx, 1,
+        metric.WithAttributes(
+            attribute.String("method", r.Method),
+            attribute.String("path", r.URL.Path),
+            attribute.Int("status", 200),
+        ),
+    )
+    requestDuration.Record(ctx, float64(duration),
+        metric.WithAttributes(
+            attribute.String("method", r.Method),
+            attribute.String("path", r.URL.Path),
+        ),
+    )
+    
+    json.NewEncoder(w).Encode(orders)
+}
+```
+
+## OpenTelemetry Collector Setup
+
+To receive telemetry data, you need an OpenTelemetry Collector:
+
+**docker-compose.yml:**
+
+```yaml
+version: '3'
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "55679:55679" # zpages
+```
+
+**otel-collector-config.yaml:**
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  logging:
+    loglevel: debug
+  
+  # Export to Jaeger for traces
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+  
+  # Export to Prometheus for metrics
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging, jaeger]
+    
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging, prometheus]
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Appropriate Sampling Rates">
+    Adjust sampling based on traffic:
+    ```go
+    // Development: 100% sampling
+    TraceSampleProbability: 1.0
+    
+    // Production low traffic: 50% sampling
+    TraceSampleProbability: 0.5
+    
+    // Production high traffic: 10% sampling
+    TraceSampleProbability: 0.1
+    ```
+  </Accordion>
+  
+  <Accordion title="Add Meaningful Attributes">
+    Include context-specific attributes:
+    ```go
+    span.SetAttributes(
+        attribute.String("user.id", userID),
+        attribute.String("tenant.id", tenantID),
+        attribute.Int("batch.size", len(items)),
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Always Cleanup">
+    Use defer to ensure proper shutdown:
+    ```go
+    cleanup, err := telemetry.Init(ctx, cfg, logger)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer cleanup()
+    ```
+  </Accordion>
+  
+  <Accordion title="Instrument Critical Paths">
+    Focus on business-critical operations:
+    ```go
+    ctx, span := tracer.Start(ctx, "processPayment")
+    defer span.End()
+    // Critical payment processing logic
+    ```
+  </Accordion>
+</AccordionGroup>

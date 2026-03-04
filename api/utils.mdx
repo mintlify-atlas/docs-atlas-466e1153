@@ -1,0 +1,255 @@
+---
+title: "Utils API"
+description: "API reference for Salt utility functions - error handling and status code management"
+---
+
+Utility functions for working with gRPC status codes and error handling in Salt applications.
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/utils
+```
+
+## Features
+
+- **Status Code Extraction**: Extract gRPC status codes from errors
+- **Status Text Mapping**: Convert status codes to human-readable strings
+- **Error Interface Support**: Works with any error implementing `GRPCStatus()`
+
+## Functions
+
+### StatusCode
+
+Extracts the gRPC status code from an error.
+
+```go
+func StatusCode(err error) codes.Code
+```
+
+<ParamField path="err" type="error" required>
+  The error to extract status code from. Can be nil or any error type.
+</ParamField>
+
+<ResponseField name="return" type="codes.Code">
+  The gRPC status code. Returns `codes.OK` if error is nil, `codes.Unknown` if the error doesn't implement `GRPCStatus()`, or the actual status code if available.
+</ResponseField>
+
+**Behavior:**
+- Returns `codes.OK` if `err` is `nil`
+- Returns the actual status code if error implements the `GRPCStatus()` interface
+- Returns `codes.Unknown` for errors that don't implement the interface
+
+**Example:**
+
+```go
+import (
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+    "github.com/raystack/salt/utils"
+)
+
+// With a gRPC status error
+err := status.Error(codes.NotFound, "resource not found")
+code := utils.StatusCode(err)
+fmt.Println(code) // codes.NotFound
+
+// With nil error
+code = utils.StatusCode(nil)
+fmt.Println(code) // codes.OK
+
+// With regular error
+err = errors.New("generic error")
+code = utils.StatusCode(err)
+fmt.Println(code) // codes.Unknown
+```
+
+### StatusText
+
+Converts an error's status code to a human-readable string representation.
+
+```go
+func StatusText(err error) string
+```
+
+<ParamField path="err" type="error" required>
+  The error to convert to status text
+</ParamField>
+
+<ResponseField name="return" type="string">
+  String representation of the status code (e.g., `"NOT_FOUND"`, `"INVALID_ARGUMENT"`)
+</ResponseField>
+
+**Example:**
+
+```go
+import (
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+    "github.com/raystack/salt/utils"
+)
+
+err := status.Error(codes.InvalidArgument, "invalid request")
+text := utils.StatusText(err)
+fmt.Println(text) // "INVALID_ARGUMENT"
+```
+
+## Status Code Mappings
+
+The following gRPC status codes are mapped to their string representations:
+
+| Code | String Representation |
+|------|----------------------|
+| `codes.OK` | `"OK"` |
+| `codes.Canceled` | `"CANCELED"` |
+| `codes.Unknown` | `"UNKNOWN"` |
+| `codes.InvalidArgument` | `"INVALID_ARGUMENT"` |
+| `codes.DeadlineExceeded` | `"DEADLINE_EXCEEDED"` |
+| `codes.NotFound` | `"NOT_FOUND"` |
+| `codes.AlreadyExists` | `"ALREADY_EXISTS"` |
+| `codes.PermissionDenied` | `"PERMISSION_DENIED"` |
+| `codes.ResourceExhausted` | `"RESOURCE_EXHAUSTED"` |
+| `codes.FailedPrecondition` | `"FAILED_PRECONDITION"` |
+| `codes.Aborted` | `"ABORTED"` |
+| `codes.OutOfRange` | `"OUT_OF_RANGE"` |
+| `codes.Unimplemented` | `"UNIMPLEMENTED"` |
+| `codes.Internal` | `"INTERNAL"` |
+| `codes.Unavailable` | `"UNAVAILABLE"` |
+| `codes.DataLoss` | `"DATA_LOSS"` |
+| `codes.Unauthenticated` | `"UNAUTHENTICATED"` |
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+    "github.com/raystack/salt/utils"
+)
+
+func processRequest() error {
+    // Simulate an error
+    return status.Error(codes.NotFound, "user not found")
+}
+
+func main() {
+    err := processRequest()
+    
+    if err != nil {
+        // Extract status code
+        code := utils.StatusCode(err)
+        text := utils.StatusText(err)
+        
+        fmt.Printf("Error occurred: %v\n", err)
+        fmt.Printf("Status code: %v\n", code)
+        fmt.Printf("Status text: %s\n", text)
+        
+        // Handle specific status codes
+        switch code {
+        case codes.NotFound:
+            fmt.Println("Resource not found")
+        case codes.InvalidArgument:
+            fmt.Println("Invalid request parameters")
+        case codes.PermissionDenied:
+            fmt.Println("Access denied")
+        default:
+            fmt.Println("Unexpected error")
+        }
+    }
+}
+```
+
+**Output:**
+```
+Error occurred: rpc error: code = NotFound desc = user not found
+Status code: NotFound
+Status text: "NOT_FOUND"
+Resource not found
+```
+
+## Use Cases
+
+### Error Logging
+
+Use status codes for structured logging:
+
+```go
+import (
+    "log"
+    "github.com/raystack/salt/utils"
+)
+
+func handleError(err error) {
+    if err != nil {
+        log.Printf(
+            "error: %v | status: %s | code: %v",
+            err,
+            utils.StatusText(err),
+            utils.StatusCode(err),
+        )
+    }
+}
+```
+
+### HTTP Status Mapping
+
+Map gRPC status codes to HTTP status codes:
+
+```go
+import (
+    "net/http"
+    "google.golang.org/grpc/codes"
+    "github.com/raystack/salt/utils"
+)
+
+func grpcToHTTPStatus(err error) int {
+    code := utils.StatusCode(err)
+    
+    switch code {
+    case codes.OK:
+        return http.StatusOK
+    case codes.NotFound:
+        return http.StatusNotFound
+    case codes.InvalidArgument:
+        return http.StatusBadRequest
+    case codes.PermissionDenied:
+        return http.StatusForbidden
+    case codes.Unauthenticated:
+        return http.StatusUnauthorized
+    case codes.Internal:
+        return http.StatusInternalServerError
+    default:
+        return http.StatusInternalServerError
+    }
+}
+```
+
+### Error Metrics
+
+Track error rates by status code:
+
+```go
+import (
+    "github.com/raystack/salt/utils"
+)
+
+func recordErrorMetric(err error) {
+    if err != nil {
+        statusText := utils.StatusText(err)
+        // Record metric with status label
+        metrics.Increment("errors", map[string]string{
+            "status": statusText,
+        })
+    }
+}
+```
+
+## Dependencies
+
+This package depends on:
+- `google.golang.org/grpc/codes` - gRPC status codes
+- `google.golang.org/grpc/status` - gRPC status package
+- `github.com/pkg/errors` - Error wrapping and handling

@@ -1,0 +1,492 @@
+---
+title: 'SPA Server'
+description: 'Serve single-page applications with client-side routing support'
+---
+
+The `spa` package provides a simple and efficient HTTP handler for serving Single Page Applications (SPAs) from embedded file systems.
+
+## Overview
+
+The SPA handler serves static files from an embedded file system and falls back to serving an index file for client-side routing. It includes optional gzip compression for optimizing responses.
+
+## Key Features
+
+- **Embedded file system support**: Serve assets from Go's `embed.FS`
+- **Client-side routing**: Fallback to index file for non-existent routes
+- **Gzip compression**: Optional compression for supported clients
+- **Static asset serving**: Efficient file serving with proper MIME types
+- **Security**: Prevents directory traversal attacks
+
+## API Reference
+
+### Handler
+
+```go
+func Handler(build embed.FS, dir string, index string, gzip bool) (http.Handler, error)
+```
+
+Returns an HTTP handler for serving a Single Page Application (SPA).
+
+The handler serves static files from the specified directory in the embedded file system and falls back to serving the index file if a requested file is not found. This is useful for client-side routing in SPAs.
+
+**Parameters:**
+- `build`: An embedded file system containing the build assets
+- `dir`: The directory within the embedded file system where the static files are located
+- `index`: The name of the index file (usually `"index.html"`)
+- `gzip`: If `true`, the response body will be compressed using gzip for clients that support it
+
+**Returns:**
+- `http.Handler`: Handler that serves the SPA with optional gzip compression
+- `error`: Error if the file system or index file cannot be initialized
+
+**Location:** `/home/daytona/workspace/source/server/spa/handler.go:28`
+
+## Usage Examples
+
+### Basic SPA Server
+
+```go
+package main
+
+import (
+    "embed"
+    "log"
+    "net/http"
+
+    "github.com/yourusername/salt/server/spa"
+)
+
+//go:embed build/*
+var build embed.FS
+
+func main() {
+    handler, err := spa.Handler(build, "build", "index.html", true)
+    if err != nil {
+        log.Fatalf("Failed to initialize SPA handler: %v", err)
+    }
+
+    log.Println("Serving SPA on http://localhost:8080")
+    http.ListenAndServe(":8080", handler)
+}
+```
+
+### SPA with API Routes
+
+```go
+package main
+
+import (
+    "embed"
+    "encoding/json"
+    "log"
+    "net/http"
+
+    "github.com/yourusername/salt/server/spa"
+)
+
+//go:embed dist/*
+var dist embed.FS
+
+func main() {
+    // Create SPA handler without gzip (we'll add it later)
+    spaHandler, err := spa.Handler(dist, "dist", "index.html", false)
+    if err != nil {
+        log.Fatalf("Failed to initialize SPA handler: %v", err)
+    }
+
+    // Create a mux to combine API and SPA routes
+    mux := http.NewServeMux()
+
+    // API routes
+    mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+    })
+
+    mux.HandleFunc("/api/data", func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(map[string]interface{}{
+            "items": []string{"item1", "item2", "item3"},
+        })
+    })
+
+    // SPA handler for everything else
+    mux.Handle("/", spaHandler)
+
+    log.Println("Serving on http://localhost:8080")
+    http.ListenAndServe(":8080", mux)
+}
+```
+
+### SPA with Multiplexer
+
+```go
+package main
+
+import (
+    "context"
+    "embed"
+    "log"
+    "net/http"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/yourusername/salt/server/mux"
+    "github.com/yourusername/salt/server/spa"
+)
+
+//go:embed public/*
+var public embed.FS
+
+func main() {
+    // Create SPA handler with gzip compression
+    spaHandler, err := spa.Handler(public, "public", "index.html", true)
+    if err != nil {
+        log.Fatalf("Failed to initialize SPA handler: %v", err)
+    }
+
+    // Create HTTP server
+    server := &http.Server{
+        Handler: spaHandler,
+    }
+
+    // Setup context with signal handling
+    ctx, cancel := signal.NotifyContext(context.Background(), 
+        os.Interrupt, syscall.SIGTERM)
+    defer cancel()
+
+    // Serve using mux for graceful shutdown
+    if err := mux.Serve(ctx, 
+        mux.WithHTTPTarget(":8080", server),
+    ); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### Multiple SPAs
+
+```go
+package main
+
+import (
+    "embed"
+    "log"
+    "net/http"
+
+    "github.com/yourusername/salt/server/spa"
+)
+
+//go:embed admin/build/*
+var adminBuild embed.FS
+
+//go:embed dashboard/dist/*
+var dashboardDist embed.FS
+
+func main() {
+    // Admin SPA
+    adminHandler, err := spa.Handler(adminBuild, "admin/build", "index.html", true)
+    if err != nil {
+        log.Fatalf("Failed to initialize admin SPA: %v", err)
+    }
+
+    // Dashboard SPA
+    dashboardHandler, err := spa.Handler(dashboardDist, "dashboard/dist", "index.html", true)
+    if err != nil {
+        log.Fatalf("Failed to initialize dashboard SPA: %v", err)
+    }
+
+    // Combine handlers
+    mux := http.NewServeMux()
+    mux.Handle("/admin/", http.StripPrefix("/admin", adminHandler))
+    mux.Handle("/", dashboardHandler)
+
+    log.Println("Serving on http://localhost:8080")
+    http.ListenAndServe(":8080", mux)
+}
+```
+
+### Without Gzip Compression
+
+```go
+package main
+
+import (
+    "embed"
+    "log"
+    "net/http"
+
+    "github.com/yourusername/salt/server/spa"
+)
+
+//go:embed static/*
+var static embed.FS
+
+func main() {
+    // Disable gzip compression (useful for development)
+    handler, err := spa.Handler(static, "static", "index.html", false)
+    if err != nil {
+        log.Fatalf("Failed to initialize SPA handler: %v", err)
+    }
+
+    log.Println("Serving SPA on http://localhost:3000")
+    http.ListenAndServe(":3000", handler)
+}
+```
+
+## How It Works
+
+### Client-Side Routing
+
+The SPA handler implements intelligent routing to support client-side routing frameworks like React Router, Vue Router, or Angular Router:
+
+1. **Static file exists**: Serves the file directly (CSS, JS, images, etc.)
+2. **File not found**: Serves the index file, allowing the SPA to handle routing
+
+**Location:** `/home/daytona/workspace/source/server/spa/router.go:19-32`
+
+```go
+// Example routing behavior:
+// GET /assets/app.js      -> serves app.js
+// GET /assets/style.css   -> serves style.css
+// GET /about              -> serves index.html (SPA handles route)
+// GET /users/123          -> serves index.html (SPA handles route)
+// GET /api/data           -> serves index.html (unless handled separately)
+```
+
+### Gzip Compression
+
+When gzip is enabled (`gzip: true`), the handler automatically compresses responses for clients that support it:
+
+- Checks `Accept-Encoding` header for gzip support
+- Compresses response body using `github.com/NYTimes/gziphandler`
+- Reduces bandwidth usage and improves load times
+- Transparent to the client application
+
+**Location:** `/home/daytona/workspace/source/server/spa/handler.go:45-48`
+
+### Security Features
+
+The router prevents directory traversal attacks by:
+
+- Using Go's `http.FileSystem` interface
+- Validating file paths before serving
+- Only serving files from the embedded file system
+- No direct filesystem access from clients
+
+**Location:** `/home/daytona/workspace/source/server/spa/router.go:9-14`
+
+## Embedding Build Assets
+
+Use Go's `embed` package to include your SPA's build output in the binary:
+
+```go
+import "embed"
+
+// Embed entire directory
+//go:embed build/*
+var build embed.FS
+
+// Embed specific patterns
+//go:embed dist/*.html dist/assets/*
+var dist embed.FS
+
+// Embed multiple directories
+//go:embed static/* templates/*
+var assets embed.FS
+```
+
+### Directory Structure Examples
+
+**React App:**
+```
+project/
+├── main.go
+└── build/           // React build output
+    ├── index.html
+    ├── static/
+    │   ├── js/
+    │   ├── css/
+    │   └── media/
+    └── favicon.ico
+```
+
+```go
+//go:embed build/*
+var build embed.FS
+
+handler, _ := spa.Handler(build, "build", "index.html", true)
+```
+
+**Vue App:**
+```
+project/
+├── main.go
+└── dist/            // Vue build output
+    ├── index.html
+    ├── assets/
+    └── favicon.ico
+```
+
+```go
+//go:embed dist/*
+var dist embed.FS
+
+handler, _ := spa.Handler(dist, "dist", "index.html", true)
+```
+
+## Error Handling
+
+The handler returns errors in the following cases:
+
+### Missing Directory
+
+```go
+handler, err := spa.Handler(build, "nonexistent", "index.html", true)
+if err != nil {
+    // Error: couldn't create sub filesystem
+}
+```
+
+### Missing Index File
+
+```go
+handler, err := spa.Handler(build, "build", "missing.html", true)
+if err != nil {
+    // Error: ui is enabled but no index.html found
+}
+```
+
+### Best Error Handling
+
+```go
+handler, err := spa.Handler(build, "build", "index.html", true)
+if err != nil {
+    log.Fatalf("Failed to initialize SPA handler: %v", err)
+}
+
+server := &http.Server{
+    Handler: handler,
+    Addr:    ":8080",
+}
+
+if err := server.ListenAndServe(); err != nil {
+    log.Fatalf("Server failed: %v", err)
+}
+```
+
+## Configuration Options
+
+### Gzip Compression
+
+**Enable gzip** (recommended for production):
+```go
+handler, _ := spa.Handler(build, "build", "index.html", true)
+```
+
+**Disable gzip** (useful for development or when behind a reverse proxy):
+```go
+handler, _ := spa.Handler(build, "build", "index.html", false)
+```
+
+### Custom Index File
+
+You can use a different index file name:
+```go
+// Use home.html instead of index.html
+handler, _ := spa.Handler(build, "build", "home.html", true)
+```
+
+## Best Practices
+
+1. **Enable gzip in production**: Reduces bandwidth and improves load times
+2. **Validate embed paths**: Ensure build directory exists before building
+3. **Handle API routes separately**: Use a mux to serve API and SPA together
+4. **Use graceful shutdown**: Combine with `server/mux` for proper lifecycle management
+5. **Set appropriate cache headers**: Consider adding cache control middleware for static assets
+6. **Test fallback routing**: Verify client-side routes work correctly
+7. **Monitor embedded size**: Large assets increase binary size
+
+## Performance Considerations
+
+- **Binary size**: Embedded assets increase binary size
+- **Memory usage**: Files are served from memory (the embedded FS)
+- **Gzip overhead**: Small CPU cost for compression, large bandwidth savings
+- **Caching**: Consider adding cache headers for static assets
+
+## Common Patterns
+
+### Development vs Production
+
+```go
+package main
+
+import (
+    "embed"
+    "flag"
+    "log"
+    "net/http"
+
+    "github.com/yourusername/salt/server/spa"
+)
+
+//go:embed build/*
+var build embed.FS
+
+func main() {
+    dev := flag.Bool("dev", false, "development mode")
+    flag.Parse()
+
+    // Disable gzip in development for easier debugging
+    gzipEnabled := !*dev
+
+    handler, err := spa.Handler(build, "build", "index.html", gzipEnabled)
+    if err != nil {
+        log.Fatalf("Failed to initialize SPA handler: %v", err)
+    }
+
+    log.Printf("Serving SPA (gzip: %v) on http://localhost:8080", gzipEnabled)
+    http.ListenAndServe(":8080", handler)
+}
+```
+
+### With Middleware
+
+```go
+package main
+
+import (
+    "embed"
+    "log"
+    "net/http"
+    "time"
+
+    "github.com/yourusername/salt/server/spa"
+)
+
+//go:embed build/*
+var build embed.FS
+
+func loggingMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        next.ServeHTTP(w, r)
+        log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+    })
+}
+
+func main() {
+    handler, err := spa.Handler(build, "build", "index.html", true)
+    if err != nil {
+        log.Fatalf("Failed to initialize SPA handler: %v", err)
+    }
+
+    // Wrap with middleware
+    http.ListenAndServe(":8080", loggingMiddleware(handler))
+}
+```
+
+## See Also
+
+- [HTTP Multiplexer](/server/mux) - Multi-protocol server with graceful shutdown

@@ -1,0 +1,480 @@
+---
+title: Printer
+description: Terminal output utilities for colored text, tables, spinners, and formatted data
+---
+
+The `printer` package provides comprehensive utilities for terminal output including colored text, tables, progress bars, spinners, and structured data formatting.
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/cli/printer
+```
+
+## Colored Text Output
+
+### Success Messages
+
+Print success messages in green:
+
+```go
+import "github.com/raystack/salt/cli/printer"
+
+printer.Success("Operation completed")
+printer.Successln("Operation completed")  // With newline
+printer.Successf("Processed %d items", count)
+```
+
+### Warning Messages
+
+Print warnings in yellow:
+
+```go
+printer.Warning("Deprecated feature")
+printer.Warningln("Deprecated feature")
+printer.Warningf("Retrying in %d seconds", delay)
+```
+
+### Error Messages
+
+Print errors in red:
+
+```go
+printer.Error("Failed to connect")
+printer.Errorln("Failed to connect")
+printer.Errorf("Connection timeout after %d seconds", timeout)
+```
+
+### Info Messages
+
+Print informational messages in cyan:
+
+```go
+printer.Info("Loading configuration...")
+printer.Infoln("Loading configuration...")
+printer.Infof("Found %d items", len(items))
+```
+
+### Text Styling
+
+Apply bold and italic styles:
+
+```go
+// Bold text
+bold := printer.Bold("Important")
+printer.Boldln("Important")  // With newline
+text := printer.Boldf("Status: %s", status)
+
+// Italic text
+italic := printer.Italic("Note")
+printer.Italicln("Note")
+text := printer.Italicf("Version: %s", version)
+
+// Add space
+printer.Space()
+```
+
+## Color Functions
+
+Direct access to color functions:
+
+```go
+green := printer.Green("Success")
+green := printer.Greenf("Count: %d", n)
+
+yellow := printer.Yellow("Warning")
+yellow := printer.Yellowf("Retry: %d", n)
+
+cyan := printer.Cyan("Info")
+cyan := printer.Cyanf("Status: %s", status)
+
+red := printer.Red("Error")
+red := printer.Redf("Failed: %s", err)
+
+grey := printer.Grey("Disabled")
+grey := printer.Greyf("Old version: %s", old)
+
+blue := printer.Blue("Link")
+blue := printer.Bluef("URL: %s", url)
+
+magenta := printer.Magenta("Special")
+magenta := printer.Magentaf("ID: %s", id)
+```
+
+### Icons
+
+Get predefined icons:
+
+```go
+success := printer.Icon("success") // ✔
+failure := printer.Icon("failure") // ✘
+info := printer.Icon("info")       // ℹ
+warning := printer.Icon("warning") // ⚠
+
+fmt.Printf("%s Operation completed\n", printer.Icon("success"))
+```
+
+## Tables
+
+Render terminal-friendly tables:
+
+```go
+import (
+    "os"
+    "github.com/raystack/salt/cli/printer"
+)
+
+rows := [][]string{
+    {"ID", "Name", "Status"},
+    {"1", "Alice", "Active"},
+    {"2", "Bob", "Inactive"},
+    {"3", "Charlie", "Active"},
+}
+
+printer.Table(os.Stdout, rows)
+```
+
+Output:
+```
+ID    Name      Status
+1     Alice     Active
+2     Bob       Inactive
+3     Charlie   Active
+```
+
+### Table Features
+
+- No borders for clean terminal output
+- Left-aligned headers and content
+- Tab-separated columns
+- No text wrapping
+
+### Dynamic Tables
+
+```go
+type User struct {
+    ID     int
+    Name   string
+    Status string
+}
+
+users := []User{
+    {1, "Alice", "Active"},
+    {2, "Bob", "Inactive"},
+}
+
+rows := [][]string{{"ID", "Name", "Status"}}
+for _, user := range users {
+    rows = append(rows, []string{
+        fmt.Sprintf("%d", user.ID),
+        user.Name,
+        user.Status,
+    })
+}
+
+printer.Table(os.Stdout, rows)
+```
+
+## Spinners
+
+Show progress indicators for long-running operations:
+
+```go
+// Start spinner
+indicator := printer.Spin("Loading data...")
+
+// Perform operation
+time.Sleep(2 * time.Second)
+
+// Stop spinner
+indicator.Stop()
+```
+
+### Spinner Features
+
+- Automatically disables in non-TTY environments
+- Cyan colored dots animation
+- 120ms update interval
+- Optional label prefix
+
+### Spinner Example
+
+```go
+func fetchData() error {
+    spinner := printer.Spin("Fetching data")
+    defer spinner.Stop()
+
+    // Long operation
+    data, err := api.FetchAll()
+    if err != nil {
+        return err
+    }
+
+    return process(data)
+}
+```
+
+## Progress Bars
+
+Track progress of operations with known completion:
+
+```go
+bar := printer.Progress(100, "Downloading files")
+
+for i := 0; i < 100; i++ {
+    // Download file
+    downloadFile(i)
+    
+    // Update progress
+    bar.Add(1)
+}
+```
+
+### Progress Bar Features
+
+- Color-coded output
+- Shows count and percentage
+- Customizable description
+
+### Batch Processing Example
+
+```go
+items := []string{"file1.txt", "file2.txt", "file3.txt"}
+bar := printer.Progress(len(items), "Processing files")
+
+for _, item := range items {
+    if err := process(item); err != nil {
+        log.Printf("Failed to process %s: %v", item, err)
+    }
+    bar.Add(1)
+}
+```
+
+## Structured Data
+
+### JSON Output
+
+Print data as JSON:
+
+```go
+data := map[string]interface{}{
+    "name":   "Alice",
+    "age":    30,
+    "active": true,
+}
+
+// Compact JSON
+if err := printer.JSON(data); err != nil {
+    log.Fatal(err)
+}
+
+// Pretty-printed JSON
+if err := printer.PrettyJSON(data); err != nil {
+    log.Fatal(err)
+}
+```
+
+Output (PrettyJSON):
+```json
+{
+	"active": true,
+	"age": 30,
+	"name": "Alice"
+}
+```
+
+### YAML Output
+
+Print data as YAML:
+
+```go
+config := struct {
+    Server struct {
+        Host string `yaml:"host"`
+        Port int    `yaml:"port"`
+    } `yaml:"server"`
+}{
+    Server: struct {
+        Host string `yaml:"host"`
+        Port int    `yaml:"port"`
+    }{
+        Host: "localhost",
+        Port: 8080,
+    },
+}
+
+if err := printer.YAML(config); err != nil {
+    log.Fatal(err)
+}
+```
+
+Output:
+```yaml
+server:
+  host: localhost
+  port: 8080
+```
+
+### Generic File Output
+
+Output data in any supported format:
+
+```go
+// Supports: "json", "yaml", "prettyjson"
+format := "yaml"
+if err := printer.File(data, format); err != nil {
+    log.Fatal(err)
+}
+```
+
+## Markdown Rendering
+
+Render markdown with ANSI colors:
+
+```go
+markdown := `# Welcome
+
+This is **bold** and this is *italic*.
+
+## Features
+
+- Item 1
+- Item 2
+- Item 3
+
+` + "```go\nfunc main() {\n    fmt.Println(\"Hello\")\n}\n```" + `
+`
+
+// Render with colors
+rendered, err := printer.Markdown(markdown)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Print(rendered)
+
+// Render with word wrap at 80 characters
+rendered, err = printer.MarkdownWithWrap(markdown, 80)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Print(rendered)
+```
+
+### Markdown Features
+
+- Auto-detects terminal theme (light/dark)
+- Emoji support
+- Syntax highlighting for code blocks
+- No indentation for compact view
+- Optional word wrapping
+
+## Color Themes
+
+The printer automatically adapts colors based on terminal background:
+
+### Light Theme
+- Green: #005F00
+- Yellow: #FFAF00
+- Cyan: #0087FF
+- Red: #D70000
+- Grey: #303030
+- Blue: #000087
+- Magenta: #AF00FF
+
+### Dark Theme
+- Green: #A8CC8C
+- Yellow: #DBAB79
+- Cyan: #66C2CD
+- Red: #E88388
+- Grey: #B9BFCA
+- Blue: #71BEF2
+- Magenta: #D290E4
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    "time"
+
+    "github.com/raystack/salt/cli/printer"
+)
+
+type Deployment struct {
+    ID      string
+    Status  string
+    Created time.Time
+}
+
+func main() {
+    // Show info message
+    printer.Infoln("Starting deployment process...")
+    fmt.Println()
+
+    // Show spinner during operation
+    spinner := printer.Spin("Preparing deployment")
+    time.Sleep(1 * time.Second)
+    spinner.Stop()
+
+    // Show success
+    printer.Successln("Preparation complete")
+    fmt.Println()
+
+    // Deploy multiple services with progress
+    services := []string{"api", "worker", "frontend", "database"}
+    bar := printer.Progress(len(services), "Deploying services")
+    
+    for _, service := range services {
+        time.Sleep(500 * time.Millisecond)
+        bar.Add(1)
+    }
+    fmt.Println()
+
+    // Show results in table
+    printer.Boldln("Deployment Results")
+    rows := [][]string{
+        {"Service", "Status", "Time"},
+        {"api", printer.Green("Running"), "1.2s"},
+        {"worker", printer.Green("Running"), "0.8s"},
+        {"frontend", printer.Green("Running"), "2.1s"},
+        {"database", printer.Yellow("Starting"), "0.5s"},
+    }
+    printer.Table(os.Stdout, rows)
+    fmt.Println()
+
+    // Show structured output
+    deployment := Deployment{
+        ID:      "deploy-123",
+        Status:  "success",
+        Created: time.Now(),
+    }
+
+    printer.Boldln("Deployment Details (JSON):")
+    if err := printer.PrettyJSON(deployment); err != nil {
+        printer.Errorf("Failed to print JSON: %v\n", err)
+        os.Exit(1)
+    }
+
+    fmt.Println()
+    printer.Successf("%s Deployment completed successfully!\n", 
+        printer.Icon("success"))
+}
+```
+
+## Best Practices
+
+1. **Use semantic colors** - Success (green), warnings (yellow), errors (red), info (cyan)
+2. **Disable spinners in CI** - Spinners automatically disable in non-TTY environments
+3. **Use tables for structured data** - Better than formatted strings for columnar data
+4. **Show progress for long operations** - Use spinners for unknown duration, progress bars for known
+5. **Pretty print for humans** - Use PrettyJSON/YAML for human-readable output
+6. **Compact output for piping** - Use JSON for machine-readable output
+
+## Related
+
+- [Commander](/cli/commander) - Cobra CLI manager
+- [Prompter](/cli/prompter) - Interactive prompts
+- [Terminator](/cli/terminator) - Terminal utilities

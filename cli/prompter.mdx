@@ -1,0 +1,471 @@
+---
+title: Prompter
+description: Interactive terminal prompts for user input
+---
+
+The `prompter` package provides a clean interface for interactive terminal prompts, allowing you to collect user input through selections, multi-selections, text inputs, and confirmations.
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/cli/prompter
+```
+
+## Quick Start
+
+```go
+import "github.com/raystack/salt/cli/prompter"
+
+// Create a prompter instance
+p := prompter.New()
+
+// Get user input
+name, err := p.Input("Enter your name:", "John Doe")
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Hello, %s!\n", name)
+```
+
+## Prompter Interface
+
+The `Prompter` interface defines four methods for user interaction:
+
+```go
+type Prompter interface {
+    Select(message, defaultValue string, options []string) (int, error)
+    MultiSelect(message, defaultValue string, options []string) ([]int, error)
+    Input(message, defaultValue string) (string, error)
+    Confirm(message string, defaultValue bool) (bool, error)
+}
+```
+
+## Select Prompt
+
+Prompt the user to select one option from a list:
+
+```go
+p := prompter.New()
+
+options := []string{
+    "Development",
+    "Staging",
+    "Production",
+}
+
+index, err := p.Select(
+    "Select environment:",
+    "Development",
+    options,
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+selected := options[index]
+fmt.Printf("Selected: %s\n", selected)
+```
+
+### Select Features
+
+- Arrow keys for navigation
+- Type-ahead search
+- 20 items per page
+- Returns the index of selected option
+
+### Select Example with Actions
+
+```go
+actions := []string{"Deploy", "Rollback", "View Logs", "Cancel"}
+
+index, err := p.Select("What would you like to do?", "Deploy", actions)
+if err != nil {
+    log.Fatal(err)
+}
+
+switch index {
+case 0:
+    deploy()
+case 1:
+    rollback()
+case 2:
+    viewLogs()
+case 3:
+    fmt.Println("Cancelled")
+}
+```
+
+## MultiSelect Prompt
+
+Prompt the user to select multiple options:
+
+```go
+p := prompter.New()
+
+features := []string{
+    "API Gateway",
+    "Database",
+    "Cache",
+    "Queue",
+    "Storage",
+}
+
+indices, err := p.MultiSelect(
+    "Select features to enable:",
+    "Database",
+    features,
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println("Selected features:")
+for _, idx := range indices {
+    fmt.Printf("  - %s\n", features[idx])
+}
+```
+
+### MultiSelect Features
+
+- Arrow keys for navigation
+- Space to toggle selection
+- Enter to confirm
+- 20 items per page
+- Returns slice of selected indices
+
+### MultiSelect Example
+
+```go
+type Service struct {
+    Name    string
+    Enabled bool
+}
+
+services := []Service{
+    {Name: "web", Enabled: false},
+    {Name: "api", Enabled: false},
+    {Name: "worker", Enabled: false},
+}
+
+options := make([]string, len(services))
+for i, s := range services {
+    options[i] = s.Name
+}
+
+indices, err := p.MultiSelect(
+    "Select services to deploy:",
+    "",
+    options,
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, idx := range indices {
+    services[idx].Enabled = true
+}
+```
+
+## Input Prompt
+
+Prompt the user for text input:
+
+```go
+p := prompter.New()
+
+name, err := p.Input(
+    "Enter project name:",
+    "my-project",
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Project name: %s\n", name)
+```
+
+### Input Features
+
+- Default value shown in prompt
+- Full line editing support
+- Returns the entered string
+
+### Input Validation Example
+
+```go
+func promptWithValidation(p prompter.Prompter) (string, error) {
+    for {
+        email, err := p.Input("Enter email address:", "")
+        if err != nil {
+            return "", err
+        }
+        
+        if isValidEmail(email) {
+            return email, nil
+        }
+        
+        fmt.Println("Invalid email format. Please try again.")
+    }
+}
+
+func isValidEmail(email string) bool {
+    return strings.Contains(email, "@")
+}
+```
+
+## Confirm Prompt
+
+Prompt the user for yes/no confirmation:
+
+```go
+p := prompter.New()
+
+confirmed, err := p.Confirm(
+    "Are you sure you want to delete?",
+    false,
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+if confirmed {
+    fmt.Println("Deleting...")
+} else {
+    fmt.Println("Cancelled")
+}
+```
+
+### Confirm Features
+
+- Y/n prompt format
+- Default value (true/false)
+- Returns boolean
+
+### Confirm Example
+
+```go
+func deleteResource(id string) error {
+    p := prompter.New()
+    
+    confirmed, err := p.Confirm(
+        fmt.Sprintf("Delete resource %s? This cannot be undone.", id),
+        false, // Default to No
+    )
+    if err != nil {
+        return err
+    }
+    
+    if !confirmed {
+        fmt.Println("Deletion cancelled")
+        return nil
+    }
+    
+    // Perform deletion
+    return performDelete(id)
+}
+```
+
+## Complete Example
+
+Here's a complete CLI tool using all prompt types:
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "strings"
+
+    "github.com/raystack/salt/cli/prompter"
+)
+
+type Config struct {
+    Environment string
+    Services    []string
+    ProjectName string
+    AutoDeploy  bool
+}
+
+func main() {
+    p := prompter.New()
+    config := Config{}
+
+    // Select environment
+    fmt.Println("Configure your deployment")
+    fmt.Println()
+    
+    environments := []string{"Development", "Staging", "Production"}
+    envIndex, err := p.Select(
+        "Select environment:",
+        "Development",
+        environments,
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    config.Environment = environments[envIndex]
+
+    // Multi-select services
+    services := []string{"API", "Worker", "Frontend", "Database"}
+    serviceIndices, err := p.MultiSelect(
+        "Select services to deploy:",
+        "API",
+        services,
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    for _, idx := range serviceIndices {
+        config.Services = append(config.Services, services[idx])
+    }
+
+    // Text input
+    projectName, err := p.Input(
+        "Enter project name:",
+        "my-app",
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    config.ProjectName = projectName
+
+    // Confirmation
+    autoDeploy, err := p.Confirm(
+        "Enable automatic deployments?",
+        true,
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    config.AutoDeploy = autoDeploy
+
+    // Display configuration
+    fmt.Println("\nConfiguration Summary:")
+    fmt.Printf("  Environment: %s\n", config.Environment)
+    fmt.Printf("  Project: %s\n", config.ProjectName)
+    fmt.Printf("  Services: %s\n", strings.Join(config.Services, ", "))
+    fmt.Printf("  Auto-deploy: %v\n", config.AutoDeploy)
+    
+    // Final confirmation
+    proceed, err := p.Confirm("\nProceed with this configuration?", true)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    if proceed {
+        fmt.Println("\nDeploying...")
+        // Perform deployment
+    } else {
+        fmt.Println("\nCancelled")
+    }
+}
+```
+
+## Error Handling
+
+All prompt methods return an error that should be handled:
+
+```go
+value, err := p.Input("Enter value:", "")
+if err != nil {
+    // User cancelled (Ctrl+C) or other error
+    if err.Error() == "prompt error: interrupt" {
+        fmt.Println("\nOperation cancelled")
+        os.Exit(0)
+    }
+    return fmt.Errorf("prompt failed: %w", err)
+}
+```
+
+## Combining with Other Packages
+
+### With Printer
+
+```go
+import (
+    "github.com/raystack/salt/cli/printer"
+    "github.com/raystack/salt/cli/prompter"
+)
+
+func interactiveDelete() error {
+    p := prompter.New()
+    
+    printer.Warningln("This will permanently delete the resource")
+    
+    confirmed, err := p.Confirm("Are you sure?", false)
+    if err != nil {
+        return err
+    }
+    
+    if !confirmed {
+        printer.Infoln("Cancelled")
+        return nil
+    }
+    
+    spinner := printer.Spin("Deleting resource")
+    defer spinner.Stop()
+    
+    if err := delete(); err != nil {
+        printer.Errorf("Failed: %v\n", err)
+        return err
+    }
+    
+    printer.Successln("Resource deleted")
+    return nil
+}
+```
+
+### With Commander
+
+```go
+import (
+    "github.com/raystack/salt/cli/prompter"
+    "github.com/spf13/cobra"
+)
+
+var interactiveFlag bool
+
+cmd := &cobra.Command{
+    Use:   "deploy",
+    Short: "Deploy application",
+    RunE: func(cmd *cobra.Command, args []string) error {
+        var env string
+        
+        if interactiveFlag {
+            p := prompter.New()
+            options := []string{"dev", "staging", "prod"}
+            idx, err := p.Select("Select environment:", "dev", options)
+            if err != nil {
+                return err
+            }
+            env = options[idx]
+        } else {
+            env, _ = cmd.Flags().GetString("env")
+        }
+        
+        return deploy(env)
+    },
+}
+
+cmd.Flags().BoolVarP(&interactiveFlag, "interactive", "i", false, "Interactive mode")
+cmd.Flags().StringP("env", "e", "dev", "Environment")
+```
+
+## Best Practices
+
+1. **Provide sensible defaults** - Make common choices the default
+2. **Use confirmations for destructive actions** - Always confirm before deleting or modifying
+3. **Validate input** - Loop until valid input is provided
+4. **Handle interrupts gracefully** - Catch Ctrl+C and exit cleanly
+5. **Combine with flags** - Offer both interactive and non-interactive modes
+6. **Keep option lists short** - Use pagination automatically handles long lists
+7. **Provide clear messages** - Make prompts descriptive and actionable
+
+## Related
+
+- [Commander](/cli/commander) - Cobra CLI manager
+- [Printer](/cli/printer) - Terminal output utilities
+- [Terminator](/cli/terminator) - Terminal utilities

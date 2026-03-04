@@ -1,0 +1,339 @@
+---
+title: "JSON Diff API"
+description: "API reference for the JSON diff library - calculate differences between JSON documents and reconstruct originals from diffs"
+---
+
+A Go library for calculating differences between JSON documents and reconstructing original JSON from diffs. This implementation treats array changes as complete units rather than element-by-element differences.
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/jsondiff
+```
+
+## Features
+
+- **JSON Comparison**: Generate detailed diffs between two JSON documents
+- **Reconstruction**: Reverse diffs to reconstruct the original JSON
+- **Array Handling**: Arrays are compared as complete units for cleaner diffs
+- **Type Safety**: Preserves data types during comparison and reconstruction
+- **Zero Dependencies**: Uses only Go standard library
+
+## Data Structures
+
+### DiffEntry
+
+Represents a single difference between two JSON documents.
+
+```go
+type DiffEntry struct {
+    FieldName  string  `json:"field_name"`
+    ChangeType string  `json:"change_type"`
+    FromValue  *string `json:"from_value,omitempty"`
+    ToValue    *string `json:"to_value,omitempty"`
+    FullPath   string  `json:"full_path"`
+    ValueType  string  `json:"value_type"`
+}
+```
+
+<ParamField path="field_name" type="string" required>
+  Name of the changed field (last segment of the path)
+</ParamField>
+
+<ParamField path="change_type" type="string" required>
+  Type of change: `"added"`, `"removed"`, or `"modified"`
+</ParamField>
+
+<ParamField path="from_value" type="*string">
+  Original value (for removed/modified changes)
+</ParamField>
+
+<ParamField path="to_value" type="*string">
+  New value (for added/modified changes)
+</ParamField>
+
+<ParamField path="full_path" type="string" required>
+  Full JSON path to the field (e.g., `/fruits/apple`)
+</ParamField>
+
+<ParamField path="value_type" type="string" required>
+  Data type: `"string"`, `"number"`, `"boolean"`, `"array"`, `"object"`, or `"null"`
+</ParamField>
+
+## JSONDiffer
+
+Custom JSON differ implementation that treats arrays as complete units.
+
+### NewJSONDiffer
+
+Creates a new JSONDiffer instance.
+
+```go
+func NewJSONDiffer() *JSONDiffer
+```
+
+<ResponseField name="return" type="*JSONDiffer">
+  A new JSONDiffer instance
+</ResponseField>
+
+### Compare
+
+Compares two JSON strings and returns the differences.
+
+```go
+func (jd *JSONDiffer) Compare(json1, json2 string) ([]DiffEntry, error)
+```
+
+<ParamField path="json1" type="string" required>
+  The original JSON string
+</ParamField>
+
+<ParamField path="json2" type="string" required>
+  The current JSON string to compare against
+</ParamField>
+
+<ResponseField name="return" type="[]DiffEntry">
+  Array of diff entries describing all changes
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if JSON parsing fails
+</ResponseField>
+
+**Example:**
+
+```go
+import "github.com/raystack/salt/jsondiff"
+
+originalJSON := `{
+    "name": "John",
+    "fruits": {
+        "apple": 1,
+        "arr": [1,2,3]
+    }
+}`
+
+currentJSON := `{
+    "name": "John Doe",
+    "age": 30,
+    "fruits": {
+        "apple": 1,
+        "arr": [1,3,4]
+    }
+}`
+
+differ := jsondiff.NewJSONDiffer()
+diffs, err := differ.Compare(originalJSON, currentJSON)
+if err != nil {
+    panic(err)
+}
+
+fmt.Printf("Generated %d diff entries\n", len(diffs))
+```
+
+## WI2LDiffer
+
+Alternative JSON differ implementation using the wI2L/jsondiff library.
+
+### NewWI2LDiffer
+
+Creates a new WI2LDiffer instance.
+
+```go
+func NewWI2LDiffer() *WI2LDiffer
+```
+
+<ResponseField name="return" type="*WI2LDiffer">
+  A new WI2LDiffer instance
+</ResponseField>
+
+### Compare
+
+Compares two JSON strings using the wI2L/jsondiff library.
+
+```go
+func (w *WI2LDiffer) Compare(json1, json2 string) ([]DiffEntry, error)
+```
+
+<ParamField path="json1" type="string" required>
+  The original JSON string
+</ParamField>
+
+<ParamField path="json2" type="string" required>
+  The current JSON string to compare against
+</ParamField>
+
+<ResponseField name="return" type="[]DiffEntry">
+  Array of diff entries describing all changes
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if JSON parsing fails
+</ResponseField>
+
+**Example:**
+
+```go
+import "github.com/raystack/salt/jsondiff"
+
+differ := jsondiff.NewWI2LDiffer()
+diffs, err := differ.Compare(originalJSON, currentJSON)
+if err != nil {
+    panic(err)
+}
+```
+
+## JSONReconstructor
+
+Reconstructs original JSON from current JSON and diff entries.
+
+### NewJSONReconstructor
+
+Creates a new JSONReconstructor instance.
+
+```go
+func NewJSONReconstructor() *JSONReconstructor
+```
+
+<ResponseField name="return" type="*JSONReconstructor">
+  A new JSONReconstructor instance
+</ResponseField>
+
+### ReverseDiff
+
+Reconstructs the original JSON from the current JSON and diff entries.
+
+```go
+func (jr *JSONReconstructor) ReverseDiff(currentJSON string, diffs []DiffEntry) (string, error)
+```
+
+<ParamField path="currentJSON" type="string" required>
+  The current JSON string
+</ParamField>
+
+<ParamField path="diffs" type="[]DiffEntry" required>
+  Array of diff entries to reverse
+</ParamField>
+
+<ResponseField name="return" type="string">
+  The reconstructed original JSON string
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if reconstruction fails
+</ResponseField>
+
+**Example:**
+
+```go
+import (
+    "encoding/json"
+    "reflect"
+    "github.com/raystack/salt/jsondiff"
+)
+
+reconstructor := jsondiff.NewJSONReconstructor()
+reconstructed, err := reconstructor.ReverseDiff(currentJSON, diffs)
+if err != nil {
+    panic(err)
+}
+
+// Verify reconstruction accuracy
+var originalObj, reconstructedObj interface{}
+json.Unmarshal([]byte(originalJSON), &originalObj)
+json.Unmarshal([]byte(reconstructed), &reconstructedObj)
+
+if reflect.DeepEqual(originalObj, reconstructedObj) {
+    fmt.Println("✓ Reconstruction successful")
+}
+```
+
+## Array Handling
+
+Unlike element-by-element array diffs, this library treats entire arrays as single units. When an array changes, the entire array is marked as "modified" with the complete old and new values.
+
+**Example:**
+```json
+// Original: [1,2,3]
+// Current:  [1,3,4]
+// Result:   One "modified" entry with full array values
+```
+
+This approach provides cleaner, more predictable diffs for complex nested structures.
+
+## Error Handling
+
+The library returns detailed error messages for:
+- Invalid JSON syntax
+- Malformed diff entries
+- Path resolution issues during reconstruction
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "reflect"
+    "github.com/raystack/salt/jsondiff"
+)
+
+func main() {
+    originalJSON := `{
+        "name": "John",
+        "matrix4D": [[[[1,2,3],[4,5,6],[4,5,6]]]],
+        "old_param": "value",
+        "fruits": {
+            "apple": 1,
+            "pears": 2,
+            "arr": [1,2,3]
+        }
+    }`
+
+    currentJSON := `{
+        "name": "John Doe",
+        "matrix4D": [[[[1,2,3],[4,5,6,7]]]],
+        "age": 30,
+        "fruits": {
+            "apple": 1,
+            "beans": 2,
+            "arr": [1,3,4]
+        },
+        "new_object": {
+            "a":1,
+            "b":[1,2]
+        }
+    }`
+
+    // Generate diff
+    differ := jsondiff.NewJSONDiffer()
+    diffs, err := differ.Compare(originalJSON, currentJSON)
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Printf("Generated %d diff entries:\n", len(diffs))
+    diffJSON, _ := json.MarshalIndent(diffs, "", "  ")
+    fmt.Println(string(diffJSON))
+
+    // Reconstruct original
+    reconstructor := jsondiff.NewJSONReconstructor()
+    reconstructed, err := reconstructor.ReverseDiff(currentJSON, diffs)
+    if err != nil {
+        panic(err)
+    }
+
+    // Verify
+    var originalObj, reconstructedObj interface{}
+    json.Unmarshal([]byte(originalJSON), &originalObj)
+    json.Unmarshal([]byte(reconstructed), &reconstructedObj)
+
+    if reflect.DeepEqual(originalObj, reconstructedObj) {
+        fmt.Println("✓ Reconstruction successful")
+    } else {
+        fmt.Println("✗ Reconstruction failed")
+    }
+}
+```

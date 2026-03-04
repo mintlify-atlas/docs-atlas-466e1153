@@ -1,0 +1,480 @@
+---
+title: Utils Package
+description: General utilities including gRPC status helpers
+icon: wrench
+---
+
+The `utils` package provides utility functions for common tasks including gRPC error status handling.
+
+## Features
+
+- **gRPC Status Extraction**: Extract status codes from errors
+- **Error Type Detection**: Identify gRPC errors
+- **Status Text Conversion**: Human-readable status strings
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/utils
+```
+
+## gRPC Status Utilities
+
+The utils package provides helpers for working with gRPC status codes.
+
+### StatusCode
+
+```go
+func StatusCode(err error) codes.Code
+```
+
+Extracts the gRPC status code from an error. Returns `codes.OK` if error is nil, or `codes.Unknown` if the error doesn't implement gRPC status.
+
+**Example:**
+
+```go
+package main
+
+import (
+    "fmt"
+    
+    "github.com/raystack/salt/utils"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+)
+
+func main() {
+    // Create a gRPC error
+    err := status.Error(codes.NotFound, "user not found")
+    
+    // Extract status code
+    code := utils.StatusCode(err)
+    fmt.Println(code) // Output: NotFound
+    
+    // Check status code
+    if code == codes.NotFound {
+        fmt.Println("Resource not found")
+    }
+}
+```
+
+### StatusText
+
+```go
+func StatusText(err error) string
+```
+
+Converts an error to a human-readable status string.
+
+**Example:**
+
+```go
+err := status.Error(codes.InvalidArgument, "invalid email format")
+
+statusText := utils.StatusText(err)
+fmt.Println(statusText) // Output: "INVALID_ARGUMENT"
+```
+
+## Status Code Mappings
+
+The package includes mappings for all gRPC status codes:
+
+| Code | String |
+|------|--------|
+| `codes.OK` | `"OK"` |
+| `codes.Canceled` | `"CANCELED"` |
+| `codes.Unknown` | `"UNKNOWN"` |
+| `codes.InvalidArgument` | `"INVALID_ARGUMENT"` |
+| `codes.DeadlineExceeded` | `"DEADLINE_EXCEEDED"` |
+| `codes.NotFound` | `"NOT_FOUND"` |
+| `codes.AlreadyExists` | `"ALREADY_EXISTS"` |
+| `codes.PermissionDenied` | `"PERMISSION_DENIED"` |
+| `codes.ResourceExhausted` | `"RESOURCE_EXHAUSTED"` |
+| `codes.FailedPrecondition` | `"FAILED_PRECONDITION"` |
+| `codes.Aborted` | `"ABORTED"` |
+| `codes.OutOfRange` | `"OUT_OF_RANGE"` |
+| `codes.Unimplemented` | `"UNIMPLEMENTED"` |
+| `codes.Internal` | `"INTERNAL"` |
+| `codes.Unavailable` | `"UNAVAILABLE"` |
+| `codes.DataLoss` | `"DATA_LOSS"` |
+| `codes.Unauthenticated` | `"UNAUTHENTICATED"` |
+
+## Complete Example: gRPC Error Handling
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    
+    "github.com/raystack/salt/utils"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+)
+
+// gRPC service implementation
+type UserService struct {}
+
+func (s *UserService) GetUser(ctx context.Context, req *GetUserRequest) (*User, error) {
+    if req.UserId == "" {
+        return nil, status.Error(codes.InvalidArgument, "user_id is required")
+    }
+    
+    user, err := fetchUserFromDB(req.UserId)
+    if err != nil {
+        return nil, status.Error(codes.Internal, "database error")
+    }
+    
+    if user == nil {
+        return nil, status.Error(codes.NotFound, "user not found")
+    }
+    
+    return user, nil
+}
+
+// Client error handling
+func handleUserRequest(client UserServiceClient, userID string) {
+    ctx := context.Background()
+    user, err := client.GetUser(ctx, &GetUserRequest{UserId: userID})
+    
+    if err != nil {
+        // Extract status code
+        code := utils.StatusCode(err)
+        statusText := utils.StatusText(err)
+        
+        log.Printf("Request failed: %s (%s)", err.Error(), statusText)
+        
+        // Handle specific errors
+        switch code {
+        case codes.NotFound:
+            fmt.Println("User not found")
+        case codes.InvalidArgument:
+            fmt.Println("Invalid request parameters")
+        case codes.Internal:
+            fmt.Println("Internal server error")
+        case codes.Unavailable:
+            fmt.Println("Service unavailable, please retry")
+        default:
+            fmt.Printf("Unexpected error: %s\n", statusText)
+        }
+        
+        return
+    }
+    
+    fmt.Printf("User found: %s\n", user.Name)
+}
+```
+
+## HTTP Status Mapping
+
+Common pattern for mapping gRPC codes to HTTP status codes:
+
+```go
+package main
+
+import (
+    "net/http"
+    
+    "github.com/raystack/salt/utils"
+    "google.golang.org/grpc/codes"
+)
+
+func grpcCodeToHTTP(err error) int {
+    code := utils.StatusCode(err)
+    
+    switch code {
+    case codes.OK:
+        return http.StatusOK
+    case codes.Canceled:
+        return http.StatusRequestTimeout
+    case codes.InvalidArgument:
+        return http.StatusBadRequest
+    case codes.NotFound:
+        return http.StatusNotFound
+    case codes.AlreadyExists:
+        return http.StatusConflict
+    case codes.PermissionDenied:
+        return http.StatusForbidden
+    case codes.Unauthenticated:
+        return http.StatusUnauthorized
+    case codes.ResourceExhausted:
+        return http.StatusTooManyRequests
+    case codes.FailedPrecondition:
+        return http.StatusPreconditionFailed
+    case codes.Unimplemented:
+        return http.StatusNotImplemented
+    case codes.Unavailable:
+        return http.StatusServiceUnavailable
+    case codes.Internal:
+        fallthrough
+    default:
+        return http.StatusInternalServerError
+    }
+}
+
+// HTTP handler that calls gRPC service
+func httpHandler(w http.ResponseWriter, r *http.Request) {
+    // Call gRPC service
+    result, err := callGRPCService(r.Context())
+    if err != nil {
+        httpStatus := grpcCodeToHTTP(err)
+        statusText := utils.StatusText(err)
+        
+        http.Error(w, statusText, httpStatus)
+        return
+    }
+    
+    // Success response
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(result)
+}
+```
+
+## Middleware Example
+
+```go
+package main
+
+import (
+    "context"
+    
+    "github.com/raystack/salt/log"
+    "github.com/raystack/salt/utils"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
+)
+
+// gRPC logging interceptor
+func loggingInterceptor(logger log.Logger) grpc.UnaryServerInterceptor {
+    return func(
+        ctx context.Context,
+        req interface{},
+        info *grpc.UnaryServerInfo,
+        handler grpc.UnaryHandler,
+    ) (interface{}, error) {
+        // Call handler
+        resp, err := handler(ctx, req)
+        
+        // Log with status code
+        code := utils.StatusCode(err)
+        statusText := utils.StatusText(err)
+        
+        if err != nil {
+            logger.Error("gRPC request failed",
+                "method", info.FullMethod,
+                "code", code,
+                "status", statusText,
+                "error", err.Error(),
+            )
+        } else {
+            logger.Info("gRPC request completed",
+                "method", info.FullMethod,
+                "code", codes.OK,
+            )
+        }
+        
+        return resp, err
+    }
+}
+
+func main() {
+    logger := log.NewLogrus()
+    
+    server := grpc.NewServer(
+        grpc.UnaryInterceptor(loggingInterceptor(logger)),
+    )
+    
+    // Register services and serve...
+}
+```
+
+## Retry Logic Example
+
+```go
+package main
+
+import (
+    "context"
+    "time"
+    
+    "github.com/raystack/salt/utils"
+    "google.golang.org/grpc/codes"
+)
+
+func callWithRetry(ctx context.Context, fn func() error, maxRetries int) error {
+    var err error
+    
+    for i := 0; i < maxRetries; i++ {
+        err = fn()
+        if err == nil {
+            return nil
+        }
+        
+        // Check if error is retryable
+        code := utils.StatusCode(err)
+        if !isRetryable(code) {
+            return err // Don't retry
+        }
+        
+        // Wait before retry
+        if i < maxRetries-1 {
+            time.Sleep(time.Second * time.Duration(i+1))
+        }
+    }
+    
+    return err
+}
+
+func isRetryable(code codes.Code) bool {
+    switch code {
+    case codes.Unavailable,
+        codes.DeadlineExceeded,
+        codes.ResourceExhausted,
+        codes.Aborted:
+        return true
+    default:
+        return false
+    }
+}
+
+// Usage
+func makeRequest(client MyServiceClient) error {
+    return callWithRetry(context.Background(), func() error {
+        _, err := client.DoSomething(context.Background(), &Request{})
+        return err
+    }, 3)
+}
+```
+
+## Circuit Breaker Pattern
+
+```go
+package main
+
+import (
+    "sync"
+    "time"
+    
+    "github.com/raystack/salt/utils"
+    "google.golang.org/grpc/codes"
+)
+
+type CircuitBreaker struct {
+    maxFailures  int
+    resetTimeout time.Duration
+    
+    mu           sync.Mutex
+    failures     int
+    lastFailTime time.Time
+    state        string // "closed", "open", "half-open"
+}
+
+func NewCircuitBreaker(maxFailures int, resetTimeout time.Duration) *CircuitBreaker {
+    return &CircuitBreaker{
+        maxFailures:  maxFailures,
+        resetTimeout: resetTimeout,
+        state:        "closed",
+    }
+}
+
+func (cb *CircuitBreaker) Call(fn func() error) error {
+    cb.mu.Lock()
+    
+    // Check if circuit should be reset
+    if cb.state == "open" && time.Since(cb.lastFailTime) > cb.resetTimeout {
+        cb.state = "half-open"
+        cb.failures = 0
+    }
+    
+    if cb.state == "open" {
+        cb.mu.Unlock()
+        return status.Error(codes.Unavailable, "circuit breaker open")
+    }
+    
+    cb.mu.Unlock()
+    
+    // Execute function
+    err := fn()
+    
+    cb.mu.Lock()
+    defer cb.mu.Unlock()
+    
+    if err != nil {
+        code := utils.StatusCode(err)
+        
+        // Only count server errors
+        if code == codes.Internal || code == codes.Unavailable {
+            cb.failures++
+            cb.lastFailTime = time.Now()
+            
+            if cb.failures >= cb.maxFailures {
+                cb.state = "open"
+            }
+        }
+    } else {
+        // Success - reset circuit
+        cb.failures = 0
+        cb.state = "closed"
+    }
+    
+    return err
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Specific Error Codes">
+    Choose appropriate gRPC codes for different scenarios:
+    ```go
+    // Bad
+    return status.Error(codes.Internal, "error")
+    
+    // Good
+    if validationErr {
+        return status.Error(codes.InvalidArgument, "invalid input")
+    }
+    if notFound {
+        return status.Error(codes.NotFound, "resource not found")
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle All Error Cases">
+    Use switch statements to handle different error types:
+    ```go
+    code := utils.StatusCode(err)
+    switch code {
+    case codes.NotFound:
+        // Handle not found
+    case codes.PermissionDenied:
+        // Handle permission denied
+    default:
+        // Handle other errors
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Log Error Context">
+    Include status codes in logs:
+    ```go
+    logger.Error("request failed",
+        "code", utils.StatusCode(err),
+        "status", utils.StatusText(err),
+        "error", err.Error(),
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Implement Retry Logic">
+    Retry only on appropriate error codes:
+    ```go
+    if isRetryable(utils.StatusCode(err)) {
+        // Retry the request
+    }
+    ```
+  </Accordion>
+</AccordionGroup>

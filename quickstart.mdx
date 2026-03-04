@@ -1,80 +1,271 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with Salt in minutes with this step-by-step guide
+icon: rocket
 ---
 
-## Get started in three steps
+This guide will walk you through creating a simple Go application using Salt's configuration management and logging packages.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+- Go 1.22 or later installed
+- Basic familiarity with Go modules
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+## Step-by-step guide
+
+<Steps>
+  <Step title="Create a new Go project">
+    Create a new directory and initialize a Go module:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    mkdir my-salt-app
+    cd my-salt-app
+    go mod init example.com/my-salt-app
+    ```
+  </Step>
+
+  <Step title="Install Salt">
+    Add Salt to your project:
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    go get github.com/raystack/salt
+    ```
+  </Step>
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+  <Step title="Create your configuration">
+    Create a `config.yaml` file in your project root:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```yaml config.yaml
+    app:
+      name: "my-app"
+      environment: "development"
+      port: 8080
+    
+    database:
+      host: "localhost"
+      port: 5432
+      name: "mydb"
+    
+    log:
+      level: "info"
+    ```
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Create your application config struct">
+    Create a `main.go` file and define your configuration struct:
+    
+    ```go main.go
+    package main
+    
+    import (
+        "fmt"
+        
+        "github.com/raystack/salt/config"
+        "github.com/raystack/salt/log"
+    )
+    
+    type AppConfig struct {
+        App struct {
+            Name        string `mapstructure:"name" default:"app"`
+            Environment string `mapstructure:"environment" default:"development"`
+            Port        int    `mapstructure:"port" default:"8080" validate:"required,min=1,max=65535"`
+        } `mapstructure:"app"`
+        
+        Database struct {
+            Host string `mapstructure:"host" default:"localhost"`
+            Port int    `mapstructure:"port" default:"5432"`
+            Name string `mapstructure:"name" validate:"required"`
+        } `mapstructure:"database"`
+        
+        Log struct {
+            Level string `mapstructure:"level" default:"info"`
+        } `mapstructure:"log"`
+    }
+    ```
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Load configuration and initialize logging">
+    Add the main function to load configuration and set up logging:
+    
+    ```go main.go
+    func main() {
+        // Create configuration loader
+        loader := config.NewLoader(
+            config.WithFile("./config.yaml"),
+            config.WithEnvPrefix("MYAPP"),
+        )
+        
+        // Load configuration
+        var cfg AppConfig
+        if err := loader.Load(&cfg); err != nil {
+            panic(fmt.Sprintf("failed to load config: %v", err))
+        }
+        
+        // Initialize logger
+        logger := log.NewLogrus(
+            log.LogrusWithLevel(cfg.Log.Level),
+        )
+        
+        // Log application startup
+        logger.Info("application starting", 
+            "name", cfg.App.Name,
+            "environment", cfg.App.Environment,
+            "port", cfg.App.Port,
+        )
+        
+        logger.Info("database configuration",
+            "host", cfg.Database.Host,
+            "port", cfg.Database.Port,
+            "name", cfg.Database.Name,
+        )
+        
+        // Your application logic here
+        logger.Info("application ready")
+    }
+    ```
+  </Step>
 
-### Step 3: Go live
+  <Step title="Run your application">
+    Run your application:
+    
+    ```bash
+    go run main.go
+    ```
+    
+    You should see output like:
+    
+    ```
+    INFO[0000] application starting environment=development name=my-app port=8080
+    INFO[0000] database configuration host=localhost port=5432 name=mydb
+    INFO[0000] application ready
+    ```
+    
+    <Tip>
+      Try overriding configuration with environment variables:
+      ```bash
+      MYAPP_APP_PORT=9090 MYAPP_LOG_LEVEL=debug go run main.go
+      ```
+    </Tip>
+  </Step>
+</Steps>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+## Configuration precedence
+
+Salt uses the following configuration precedence (highest to lowest):
+
+1. **Command-line flags** (if `WithFlags()` is used)
+2. **Environment variables** (with the specified prefix)
+3. **Configuration file** (YAML/JSON)
+4. **Default values** (from struct tags)
+
+This allows you to:
+- Use sensible defaults for development
+- Override with config files for different environments
+- Override specific values with environment variables in production
+- Override everything with command-line flags for testing
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you have a basic Salt application running, explore more features:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Configuration Package" icon="gear" href="/packages/config">
+    Learn about advanced configuration features like dynamic flag binding and validation
+  </Card>
+  <Card title="Logging Package" icon="file-lines" href="/packages/log">
+    Explore structured logging with Logrus and Zap
+  </Card>
+  <Card title="Database Package" icon="database" href="/packages/db">
+    Add database connectivity with connection pooling and migrations
+  </Card>
+  <Card title="CLI Utilities" icon="terminal" href="/packages/cli">
+    Build powerful CLI tools with commander, printer, and prompter
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Complete example
+
+Here's the complete working example:
+
+<Accordion title="View complete main.go">
+```go
+package main
+
+import (
+    "fmt"
+    
+    "github.com/raystack/salt/config"
+    "github.com/raystack/salt/log"
+)
+
+type AppConfig struct {
+    App struct {
+        Name        string `mapstructure:"name" default:"app"`
+        Environment string `mapstructure:"environment" default:"development"`
+        Port        int    `mapstructure:"port" default:"8080" validate:"required,min=1,max=65535"`
+    } `mapstructure:"app"`
+    
+    Database struct {
+        Host string `mapstructure:"host" default:"localhost"`
+        Port int    `mapstructure:"port" default:"5432"`
+        Name string `mapstructure:"name" validate:"required"`
+    } `mapstructure:"database"`
+    
+    Log struct {
+        Level string `mapstructure:"level" default:"info"`
+    } `mapstructure:"log"`
+}
+
+func main() {
+    // Create configuration loader
+    loader := config.NewLoader(
+        config.WithFile("./config.yaml"),
+        config.WithEnvPrefix("MYAPP"),
+    )
+    
+    // Load configuration
+    var cfg AppConfig
+    if err := loader.Load(&cfg); err != nil {
+        panic(fmt.Sprintf("failed to load config: %v", err))
+    }
+    
+    // Initialize logger
+    logger := log.NewLogrus(
+        log.LogrusWithLevel(cfg.Log.Level),
+    )
+    
+    // Log application startup
+    logger.Info("application starting", 
+        "name", cfg.App.Name,
+        "environment", cfg.App.Environment,
+        "port", cfg.App.Port,
+    )
+    
+    logger.Info("database configuration",
+        "host", cfg.Database.Host,
+        "port", cfg.Database.Port,
+        "name", cfg.Database.Name,
+    )
+    
+    // Your application logic here
+    logger.Info("application ready")
+}
+```
+</Accordion>
+
+<Accordion title="View complete config.yaml">
+```yaml
+app:
+  name: "my-app"
+  environment: "development"
+  port: 8080
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "mydb"
+
+log:
+  level: "info"
+```
+</Accordion>

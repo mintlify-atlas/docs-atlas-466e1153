@@ -1,0 +1,418 @@
+---
+title: Commander
+description: CLI command management and configuration system for building feature-rich command-line applications
+icon: terminal
+---
+
+## Overview
+
+Commander provides a comprehensive system for managing and configuring CLI features, including custom help, reference documentation, shell completion, and command hooks. Built on top of Cobra, it simplifies the creation of professional command-line tools.
+
+## Manager
+
+The Manager is the core component that orchestrates all CLI features.
+
+### Type Definition
+
+```go
+type Manager struct {
+    RootCmd    *cobra.Command
+    Help       bool           // Enable custom help
+    Reference  bool           // Enable reference command
+    Completion bool           // Enable shell completion
+    Config     bool           // Enable configuration management
+    Docs       bool           // Enable markdown documentation
+    Hooks      []HookBehavior // Hook behaviors to apply
+    Topics     []HelpTopic    // Help topics with details
+}
+```
+
+<ParamField path="RootCmd" type="*cobra.Command" required>
+  The root Cobra command for the CLI application
+</ParamField>
+
+<ParamField path="Help" type="bool" default="true">
+  Enable custom help formatting with organized command sections
+</ParamField>
+
+<ParamField path="Reference" type="bool" default="true">
+  Enable the reference command for comprehensive documentation
+</ParamField>
+
+<ParamField path="Completion" type="bool" default="true">
+  Enable shell completion for Bash, Zsh, Fish, and PowerShell
+</ParamField>
+
+<ParamField path="Config" type="bool" default="false">
+  Enable configuration management features
+</ParamField>
+
+<ParamField path="Docs" type="bool" default="false">
+  Enable markdown documentation generation
+</ParamField>
+
+<ParamField path="Hooks" type="[]HookBehavior">
+  Custom behaviors to apply to commands annotated with `client:true`
+</ParamField>
+
+<ParamField path="Topics" type="[]HelpTopic">
+  Additional help topics for detailed information
+</ParamField>
+
+### Functions
+
+#### New
+
+Creates a new CLI Manager with optional configurations.
+
+```go
+func New(rootCmd *cobra.Command, options ...func(*Manager)) *Manager
+```
+
+<ParamField path="rootCmd" type="*cobra.Command" required>
+  The root Cobra command for the CLI
+</ParamField>
+
+<ParamField path="options" type="...func(*Manager)">
+  Functional options for configuring the Manager (e.g., WithTopics, WithHooks)
+</ParamField>
+
+<ResponseField name="Manager" type="*Manager">
+  Configured Manager instance with default settings applied
+</ResponseField>
+
+**Example:**
+
+```go
+rootCmd := &cobra.Command{Use: "mycli"}
+manager := commander.New(rootCmd,
+    commander.WithTopics(topics),
+    commander.WithHooks(hooks),
+)
+manager.Init()
+```
+
+#### Init
+
+Initializes and sets up all CLI features based on the Manager's configuration.
+
+```go
+func (m *Manager) Init()
+```
+
+This method:
+- Configures custom help formatting
+- Adds reference command
+- Adds completion command
+- Sets up markdown documentation generation
+- Registers help topics
+- Applies client hooks
+
+**Example:**
+
+```go
+manager := commander.New(rootCmd)
+manager.Help = true
+manager.Reference = true
+manager.Init() // Apply all configurations
+```
+
+#### IsCommandErr
+
+Checks if an error is related to a Cobra command error (e.g., unknown command, unknown flag).
+
+```go
+func IsCommandErr(err error) bool
+```
+
+<ParamField path="err" type="error" required>
+  The error to check
+</ParamField>
+
+<ResponseField name="result" type="bool">
+  True if the error is a command-related error, false otherwise
+</ResponseField>
+
+**Example:**
+
+```go
+if err := rootCmd.Execute(); err != nil {
+    if commander.IsCommandErr(err) {
+        // User error: show help
+        fmt.Println("See --help for usage")
+    } else {
+        // Program error: log and exit
+        log.Fatal(err)
+    }
+}
+```
+
+## Configuration Options
+
+### WithTopics
+
+Configures help topics for the Manager.
+
+```go
+func WithTopics(topics []HelpTopic) func(*Manager)
+```
+
+<ParamField path="topics" type="[]HelpTopic" required>
+  Slice of help topics to add to the CLI
+</ParamField>
+
+**Example:**
+
+```go
+topics := []commander.HelpTopic{
+    {
+        Name:    "environment",
+        Short:   "Environment variables reference",
+        Long:    "Detailed description of environment variables...",
+        Example: "export MY_VAR=value",
+    },
+}
+
+manager := commander.New(rootCmd, commander.WithTopics(topics))
+```
+
+### WithHooks
+
+Configures hook behaviors for the Manager.
+
+```go
+func WithHooks(hooks []HookBehavior) func(*Manager)
+```
+
+<ParamField path="hooks" type="[]HookBehavior" required>
+  Slice of hook behaviors to apply to commands
+</ParamField>
+
+**Example:**
+
+```go
+hooks := []commander.HookBehavior{
+    {
+        Name: "auth",
+        Behavior: func(cmd *cobra.Command) {
+            cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+                return checkAuthentication()
+            }
+        },
+    },
+}
+
+manager := commander.New(rootCmd, commander.WithHooks(hooks))
+```
+
+## Types
+
+### HelpTopic
+
+Defines a single help topic with its details.
+
+```go
+type HelpTopic struct {
+    Name    string
+    Short   string
+    Long    string
+    Example string
+}
+```
+
+<ParamField path="Name" type="string" required>
+  The command name for the help topic (e.g., "environment")
+</ParamField>
+
+<ParamField path="Short" type="string" required>
+  Brief description shown in help listings
+</ParamField>
+
+<ParamField path="Long" type="string" required>
+  Detailed information about the topic
+</ParamField>
+
+<ParamField path="Example" type="string">
+  Example usage or code snippets
+</ParamField>
+
+### HookBehavior
+
+Defines a specific behavior applied to commands.
+
+```go
+type HookBehavior struct {
+    Name     string
+    Behavior func(cmd *cobra.Command)
+}
+```
+
+<ParamField path="Name" type="string" required>
+  Descriptive name for the hook (e.g., "setup", "auth")
+</ParamField>
+
+<ParamField path="Behavior" type="func(cmd *cobra.Command)" required>
+  Function that modifies or enhances the command
+</ParamField>
+
+## Features
+
+### Custom Help
+
+Provides enhanced help output with:
+- Organized command sections (Core, Other, Help topics)
+- Command grouping by annotations
+- Custom formatting with colors and styles
+- Detailed error messages for incorrect usage
+
+**Example:**
+
+```go
+// Annotate commands for grouping
+cmd := &cobra.Command{
+    Use:   "deploy",
+    Short: "Deploy application",
+    Annotations: map[string]string{
+        "group": "core",
+    },
+}
+```
+
+### Reference Command
+
+Automatically generates a comprehensive reference of all commands in markdown format.
+
+```bash
+$ mycli reference
+# mycli reference
+
+## `mycli deploy`
+Deploy application
+
+## `mycli config`
+Manage configuration
+```
+
+### Shell Completion
+
+Generates completion scripts for multiple shells:
+
+```bash
+# Bash
+$ mycli completion bash > /etc/bash_completion.d/mycli
+
+# Zsh
+$ mycli completion zsh > "${fpath[1]}/_mycli"
+
+# Fish
+$ mycli completion fish > ~/.config/fish/completions/mycli.fish
+
+# PowerShell
+PS> mycli completion powershell > mycli.ps1
+```
+
+### Markdown Documentation
+
+Generates markdown documentation tree for all commands (when enabled).
+
+```bash
+$ mycli markdown
+# Generates docs/ directory with markdown files
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Command Grouping">
+    Use annotations to organize commands into logical groups:
+    
+    ```go
+    cmd.Annotations = map[string]string{
+        "group": "core",  // or "help", or custom group names
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Client Hooks">
+    Mark commands that need special behaviors:
+    
+    ```go
+    cmd.Annotations = map[string]string{
+        "client": "true",  // Hooks will be applied to this command
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Error Handling">
+    Distinguish between user and program errors:
+    
+    ```go
+    if err := rootCmd.Execute(); err != nil {
+        if commander.IsCommandErr(err) {
+            os.Exit(1)  // User error
+        } else {
+            log.Fatal(err)  // Program error
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "github.com/raystack/salt/cli/commander"
+    "github.com/spf13/cobra"
+)
+
+func main() {
+    // Create root command
+    rootCmd := &cobra.Command{
+        Use:   "mycli",
+        Short: "My CLI application",
+    }
+
+    // Define help topics
+    topics := []commander.HelpTopic{
+        {
+            Name:    "environment",
+            Short:   "Environment variables",
+            Long:    "List of environment variables...",
+            Example: "export API_KEY=secret",
+        },
+    }
+
+    // Define hooks
+    hooks := []commander.HookBehavior{
+        {
+            Name: "auth",
+            Behavior: func(cmd *cobra.Command) {
+                cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+                    // Authentication logic
+                    return nil
+                }
+            },
+        },
+    }
+
+    // Create and initialize manager
+    manager := commander.New(
+        rootCmd,
+        commander.WithTopics(topics),
+        commander.WithHooks(hooks),
+    )
+    manager.Init()
+
+    // Execute
+    if err := rootCmd.Execute(); err != nil {
+        if commander.IsCommandErr(err) {
+            os.Exit(1)
+        } else {
+            log.Fatal(err)
+        }
+    }
+}
+```

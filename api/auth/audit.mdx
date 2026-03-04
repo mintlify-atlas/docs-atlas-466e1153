@@ -1,0 +1,557 @@
+---
+title: 'Audit Logging'
+description: 'Audit logging API for tracking user actions in Salt'
+---
+
+## Overview
+
+The Audit package provides comprehensive audit logging functionality for tracking user actions, system events, and security-relevant operations. It supports flexible metadata extraction, custom repositories, and includes a PostgreSQL implementation.
+
+## Service
+
+### New
+
+Creates a new audit service with optional configuration.
+
+<ParamField path="opts" type="...AuditOption">
+  Optional configuration functions:
+  - `WithRepository` - Custom storage backend
+  - `WithMetadataExtractor` - Function to extract metadata from context
+  - `WithActorExtractor` - Function to extract actor from context
+</ParamField>
+
+<ResponseField name="Service" type="*Service">
+  Returns a configured audit service
+</ResponseField>
+
+```go
+package main
+
+import (
+    "context"
+    "database/sql"
+    "github.com/raystack/salt/auth/audit"
+    "github.com/raystack/salt/auth/audit/repositories"
+)
+
+func main() {
+    db, _ := sql.Open("postgres", "connection-string")
+    repo := repositories.NewPostgresRepository(db)
+    
+    svc := audit.New(
+        audit.WithRepository(repo),
+        audit.WithActorExtractor(func(ctx context.Context) (string, error) {
+            // Extract actor from your auth context
+            return "user@example.com", nil
+        }),
+        audit.WithMetadataExtractor(func(ctx context.Context) map[string]interface{} {
+            return map[string]interface{}{
+                "ip_address": "192.168.1.1",
+                "user_agent": "Mozilla/5.0",
+            }
+        }),
+    )
+    
+    // Initialize repository (creates tables)
+    if err := repo.Init(context.Background()); err != nil {
+        panic(err)
+    }
+}
+```
+
+### Log
+
+Records an audit log entry.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context containing actor and metadata information
+</ParamField>
+
+<ParamField path="action" type="string" required>
+  Description of the action being logged (e.g., "user.login", "resource.delete")
+</ParamField>
+
+<ParamField path="data" type="interface{}" required>
+  Arbitrary data associated with the action. Will be JSON-serialized.
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Error if logging fails
+</ResponseField>
+
+```go
+ctx := context.Background()
+ctx = audit.WithActor(ctx, "user@example.com")
+ctx, _ = audit.WithMetadata(ctx, map[string]interface{}{
+    "ip_address": "192.168.1.1",
+    "resource_id": "resource-123",
+})
+
+err := svc.Log(ctx, "resource.create", map[string]interface{}{
+    "resource_type": "document",
+    "resource_name": "quarterly-report.pdf",
+    "size_bytes": 1024000,
+})
+if err != nil {
+    // Handle error
+}
+```
+
+## Context Functions
+
+### WithActor
+
+Adds actor information to the context.
+
+<ParamField path="ctx" type="context.Context" required>
+  Parent context
+</ParamField>
+
+<ParamField path="actor" type="string" required>
+  Actor identifier (typically user ID or email)
+</ParamField>
+
+<ResponseField name="Context" type="context.Context">
+  Context with actor information
+</ResponseField>
+
+```go
+ctx := context.Background()
+ctx = audit.WithActor(ctx, "user@example.com")
+
+// Use ctx in subsequent calls
+```
+
+### WithMetadata
+
+Adds or merges metadata into the context.
+
+<ParamField path="ctx" type="context.Context" required>
+  Parent context
+</ParamField>
+
+<ParamField path="md" type="map[string]interface{}" required>
+  Metadata key-value pairs to add
+</ParamField>
+
+<ResponseField name="Context" type="context.Context">
+  Context with merged metadata
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if existing metadata cannot be cast to map type
+</ResponseField>
+
+```go
+ctx := context.Background()
+
+// Add initial metadata
+ctx, _ = audit.WithMetadata(ctx, map[string]interface{}{
+    "ip_address": "192.168.1.1",
+})
+
+// Merge additional metadata
+ctx, _ = audit.WithMetadata(ctx, map[string]interface{}{
+    "user_agent": "Mozilla/5.0",
+})
+
+// Both metadata values are now in context
+```
+
+## Data Models
+
+### Log
+
+Represents a single audit log entry.
+
+<ResponseField name="Timestamp" type="time.Time" required>
+  When the action occurred
+</ResponseField>
+
+<ResponseField name="Action" type="string" required>
+  Description of the action
+</ResponseField>
+
+<ResponseField name="Actor" type="string">
+  Identifier of the user or system that performed the action
+</ResponseField>
+
+<ResponseField name="Data" type="interface{}">
+  Action-specific data (JSON-serializable)
+</ResponseField>
+
+<ResponseField name="Metadata" type="interface{}">
+  Contextual metadata (JSON-serializable)
+</ResponseField>
+
+```go
+type Log struct {
+    Timestamp time.Time   `json:"timestamp"`
+    Action    string      `json:"action"`
+    Actor     string      `json:"actor"`
+    Data      interface{} `json:"data"`
+    Metadata  interface{} `json:"metadata"`
+}
+```
+
+## Configuration Options
+
+### WithRepository
+
+Configures a custom storage backend.
+
+<ParamField path="r" type="repository" required>
+  Repository implementation with Init and Insert methods
+</ParamField>
+
+<ResponseField name="AuditOption" type="AuditOption">
+  Configuration function
+</ResponseField>
+
+### WithMetadataExtractor
+
+Configures automatic metadata extraction from context.
+
+<ParamField path="fn" type="func(context.Context) map[string]interface{}" required>
+  Function to extract metadata from request context
+</ParamField>
+
+<ResponseField name="AuditOption" type="AuditOption">
+  Configuration function
+</ResponseField>
+
+```go
+svc := audit.New(
+    audit.WithMetadataExtractor(func(ctx context.Context) map[string]interface{} {
+        // Extract from HTTP request, gRPC metadata, etc.
+        return map[string]interface{}{
+            "ip_address": extractIPFromContext(ctx),
+            "user_agent": extractUserAgentFromContext(ctx),
+            "request_id": extractRequestIDFromContext(ctx),
+        }
+    }),
+)
+```
+
+### WithActorExtractor
+
+Configures custom actor extraction from context.
+
+<ParamField path="fn" type="func(context.Context) (string, error)" required>
+  Function to extract actor from context
+</ParamField>
+
+<ResponseField name="AuditOption" type="AuditOption">
+  Configuration function
+</ResponseField>
+
+```go
+svc := audit.New(
+    audit.WithActorExtractor(func(ctx context.Context) (string, error) {
+        user := getUserFromContext(ctx)
+        if user == nil {
+            return "system", nil
+        }
+        return user.Email, nil
+    }),
+)
+```
+
+## Repository Interface
+
+Implement this interface to create custom storage backends.
+
+```go
+type repository interface {
+    Init(context.Context) error
+    Insert(context.Context, *Log) error
+}
+```
+
+### Init
+
+Initializes the repository (e.g., creates tables).
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the operation
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Error if initialization fails
+</ResponseField>
+
+### Insert
+
+Stores an audit log entry.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the operation
+</ParamField>
+
+<ParamField path="log" type="*Log" required>
+  Audit log entry to store
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Error if insertion fails
+</ResponseField>
+
+## PostgreSQL Repository
+
+### NewPostgresRepository
+
+Creates a PostgreSQL-backed audit repository.
+
+<ParamField path="db" type="*sql.DB" required>
+  Database connection
+</ParamField>
+
+<ResponseField name="PostgresRepository" type="*PostgresRepository">
+  Repository implementation for PostgreSQL
+</ResponseField>
+
+```go
+import (
+    "database/sql"
+    _ "github.com/lib/pq"
+    "github.com/raystack/salt/auth/audit/repositories"
+)
+
+db, err := sql.Open("postgres", "postgres://user:pass@localhost/db?sslmode=disable")
+if err != nil {
+    panic(err)
+}
+
+repo := repositories.NewPostgresRepository(db)
+
+// Initialize (creates tables and indexes)
+if err := repo.Init(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+### Database Schema
+
+The PostgreSQL repository creates the following schema:
+
+```sql
+CREATE TABLE IF NOT EXISTS audit_logs (
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    data JSONB NOT NULL,
+    metadata JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS audit_logs_timestamp_idx ON audit_logs (timestamp);
+CREATE INDEX IF NOT EXISTS audit_logs_action_idx ON audit_logs (action);
+CREATE INDEX IF NOT EXISTS audit_logs_actor_idx ON audit_logs (actor);
+```
+
+**Indexes:**
+- `timestamp` - For time-based queries and retention policies
+- `action` - For filtering by action type
+- `actor` - For user activity tracking
+
+### DB Access
+
+Get the underlying database connection:
+
+```go
+repo := repositories.NewPostgresRepository(db)
+db := repo.DB()
+
+// Use db for custom queries
+```
+
+## Usage Examples
+
+### Basic Logging
+
+```go
+package main
+
+import (
+    "context"
+    "database/sql"
+    "github.com/raystack/salt/auth/audit"
+    "github.com/raystack/salt/auth/audit/repositories"
+)
+
+func main() {
+    // Setup
+    db, _ := sql.Open("postgres", "connection-string")
+    repo := repositories.NewPostgresRepository(db)
+    repo.Init(context.Background())
+    
+    svc := audit.New(audit.WithRepository(repo))
+    
+    // Log an action
+    ctx := audit.WithActor(context.Background(), "user@example.com")
+    svc.Log(ctx, "user.login", map[string]interface{}{
+        "method": "oauth",
+        "success": true,
+    })
+}
+```
+
+### HTTP Middleware
+
+```go
+func AuditMiddleware(svc *audit.Service) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            // Extract context
+            ctx := r.Context()
+            ctx = audit.WithActor(ctx, getUserEmail(r))
+            ctx, _ = audit.WithMetadata(ctx, map[string]interface{}{
+                "ip_address": r.RemoteAddr,
+                "user_agent": r.UserAgent(),
+                "method":     r.Method,
+                "path":       r.URL.Path,
+            })
+            
+            // Log request
+            svc.Log(ctx, "http.request", map[string]interface{}{
+                "url": r.URL.String(),
+            })
+            
+            next.ServeHTTP(w, r.WithContext(ctx))
+        })
+    }
+}
+```
+
+### gRPC Interceptor
+
+```go
+import (
+    "google.golang.org/grpc"
+    "github.com/raystack/salt/auth/audit"
+)
+
+func UnaryAuditInterceptor(svc *audit.Service) grpc.UnaryServerInterceptor {
+    return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+        ctx = audit.WithActor(ctx, getActorFromGRPCContext(ctx))
+        ctx, _ = audit.WithMetadata(ctx, map[string]interface{}{
+            "method": info.FullMethod,
+        })
+        
+        resp, err := handler(ctx, req)
+        
+        svc.Log(ctx, "grpc.call", map[string]interface{}{
+            "method":  info.FullMethod,
+            "success": err == nil,
+        })
+        
+        return resp, err
+    }
+}
+```
+
+### Custom Repository
+
+```go
+import (
+    "context"
+    "github.com/raystack/salt/auth/audit"
+)
+
+type CustomRepository struct {
+    // Your storage backend
+}
+
+func (r *CustomRepository) Init(ctx context.Context) error {
+    // Initialize storage
+    return nil
+}
+
+func (r *CustomRepository) Insert(ctx context.Context, log *audit.Log) error {
+    // Store log entry
+    return nil
+}
+
+// Use custom repository
+svc := audit.New(audit.WithRepository(&CustomRepository{}))
+```
+
+## Error Handling
+
+<ResponseField name="ErrInvalidMetadata" type="error">
+  Failed to cast existing metadata to map[string]interface{} type
+</ResponseField>
+
+```go
+ctx, err := audit.WithMetadata(ctx, metadata)
+if err != nil {
+    if errors.Is(err, audit.ErrInvalidMetadata) {
+        // Handle metadata type error
+    }
+}
+```
+
+## Best Practices
+
+### Action Naming
+
+Use hierarchical action names for better filtering:
+
+```go
+// Good
+svc.Log(ctx, "user.login", data)
+svc.Log(ctx, "user.logout", data)
+svc.Log(ctx, "resource.create", data)
+svc.Log(ctx, "resource.delete", data)
+svc.Log(ctx, "permission.grant", data)
+
+// Can query by prefix: "user.*", "resource.*"
+```
+
+### Metadata Organization
+
+Structure metadata consistently:
+
+```go
+metadata := map[string]interface{}{
+    // Request context
+    "ip_address":   "192.168.1.1",
+    "user_agent":   "Mozilla/5.0",
+    "request_id":   "req-123",
+    
+    // Application context
+    "organization": "org-456",
+    "workspace":    "ws-789",
+    
+    // System context
+    "service":      "api-server",
+    "version":      "1.0.0",
+}
+```
+
+### Data Structure
+
+Keep action data focused and JSON-serializable:
+
+```go
+data := map[string]interface{}{
+    "resource_id":   "res-123",
+    "resource_type": "document",
+    "old_value":     "draft",
+    "new_value":     "published",
+    "changed_fields": []string{"status", "publish_date"},
+}
+```
+
+### Performance Considerations
+
+- Use async logging for high-throughput applications
+- Implement log buffering for batch inserts
+- Set up appropriate PostgreSQL indexes for your query patterns
+- Consider data retention policies for the audit_logs table
+
+### Security
+
+- Never log sensitive data (passwords, tokens, PII) in plaintext
+- Implement access controls on the audit_logs table
+- Encrypt sensitive fields if logging is required
+- Set up monitoring and alerting on audit log anomalies

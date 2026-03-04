@@ -1,0 +1,290 @@
+---
+title: 'OIDC Authentication'
+description: 'OpenID Connect authentication API for Salt'
+---
+
+## Overview
+
+The OIDC package provides OpenID Connect authentication with PKCE (Proof Key for Code Exchange) support and Google Service Account integration. It implements the OAuth 2.0 authorization code flow with enhanced security.
+
+## Token Source
+
+### NewTokenSource
+
+Creates a new OAuth2 token source for interactive authentication with PKCE.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the authentication flow
+</ParamField>
+
+<ParamField path="conf" type="*oauth2.Config" required>
+  OAuth2 configuration including:
+  - `ClientID` - OAuth2 client identifier
+  - `ClientSecret` - OAuth2 client secret
+  - `RedirectURL` - Callback URL for authorization
+  - `Endpoint` - Authorization server endpoints
+  - `Scopes` - OAuth2 scopes (openid scope added automatically)
+</ParamField>
+
+<ParamField path="audience" type="string" required>
+  Target audience for the token
+</ParamField>
+
+<ResponseField name="TokenSource" type="oauth2.TokenSource">
+  Returns a token source that implements the OAuth2 TokenSource interface
+</ResponseField>
+
+```go
+package main
+
+import (
+    "context"
+    "golang.org/x/oauth2"
+    "github.com/raystack/salt/auth/oidc"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    config := &oauth2.Config{
+        ClientID:     "your-client-id",
+        ClientSecret: "your-client-secret",
+        RedirectURL:  "http://localhost:8080/callback",
+        Endpoint: oauth2.Endpoint{
+            AuthURL:  "https://provider.com/authorize",
+            TokenURL: "https://provider.com/token",
+        },
+        Scopes: []string{"profile", "email"},
+    }
+    
+    ts := oidc.NewTokenSource(ctx, config, "https://api.example.com")
+    token, err := ts.Token()
+    if err != nil {
+        panic(err)
+    }
+    
+    // Use token.AccessToken which contains the ID token
+}
+```
+
+## Google Service Account
+
+### NewGoogleServiceAccountTokenSource
+
+Creates a token source using Google Service Account credentials.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the token generation
+</ParamField>
+
+<ParamField path="keyFile" type="string" required>
+  Path to the service account JSON key file
+</ParamField>
+
+<ParamField path="aud" type="string" required>
+  Target audience for the ID token
+</ParamField>
+
+<ResponseField name="TokenSource" type="oauth2.TokenSource">
+  Returns a token source for the service account
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the token source creation fails
+</ResponseField>
+
+```go
+package main
+
+import (
+    "context"
+    "github.com/raystack/salt/auth/oidc"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    ts, err := oidc.NewGoogleServiceAccountTokenSource(
+        ctx,
+        "/path/to/service-account.json",
+        "https://api.example.com",
+    )
+    if err != nil {
+        panic(err)
+    }
+    
+    token, err := ts.Token()
+    if err != nil {
+        panic(err)
+    }
+    
+    // Use token
+}
+```
+
+## CLI Integration
+
+### LoginCmd
+
+Creates a Cobra command for interactive login flow.
+
+<ParamField path="cfg" type="*oauth2.Config" required>
+  OAuth2 configuration for interactive login
+</ParamField>
+
+<ParamField path="aud" type="string" required>
+  Target audience for the token
+</ParamField>
+
+<ParamField path="keyFilePath" type="string">
+  Optional path to service account key file. If provided, uses service account authentication instead of interactive flow
+</ParamField>
+
+<ParamField path="onTokenOrErr" type="func(*oauth2.Token, error)" required>
+  Callback function invoked with the token or error
+</ParamField>
+
+<ResponseField name="Command" type="*cobra.Command">
+  Returns a Cobra command for the login flow
+</ResponseField>
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/spf13/cobra"
+    "golang.org/x/oauth2"
+    "github.com/raystack/salt/auth/oidc"
+)
+
+func main() {
+    config := &oauth2.Config{
+        ClientID:     "your-client-id",
+        ClientSecret: "your-client-secret",
+        RedirectURL:  "http://localhost:8080/callback",
+        Endpoint: oauth2.Endpoint{
+            AuthURL:  "https://provider.com/authorize",
+            TokenURL: "https://provider.com/token",
+        },
+    }
+    
+    rootCmd := &cobra.Command{Use: "app"}
+    
+    loginCmd := oidc.LoginCmd(
+        config,
+        "https://api.example.com",
+        "", // empty for interactive flow
+        func(token *oauth2.Token, err error) {
+            if err != nil {
+                fmt.Printf("Login failed: %v\n", err)
+                return
+            }
+            fmt.Printf("Login successful! Token: %s\n", token.AccessToken)
+        },
+    )
+    
+    rootCmd.AddCommand(loginCmd)
+    rootCmd.Execute()
+}
+```
+
+## Authentication Flow
+
+The OIDC authentication flow follows these steps:
+
+### Interactive Flow
+
+1. **Initialize Token Source**: Create a token source with OAuth2 configuration
+2. **Generate PKCE Parameters**: Generate code verifier and challenge (S256 method)
+3. **Authorization Request**: Open browser with authorization URL including:
+   - State parameter for CSRF protection
+   - PKCE code challenge
+   - Audience parameter
+   - OpenID scope
+4. **User Authorization**: User authenticates and grants consent
+5. **Callback Handling**: Local HTTP server receives authorization code
+6. **Token Exchange**: Exchange authorization code for tokens with:
+   - Code verifier for PKCE verification
+   - Audience parameter
+7. **ID Token Extraction**: Extract ID token from response and set as access token
+
+### Service Account Flow
+
+1. **Load Credentials**: Read service account JSON key file
+2. **Generate Token**: Request ID token with specified audience
+3. **Return Token Source**: Return token source for automatic token refresh
+
+## Security Features
+
+### PKCE (RFC 7636)
+
+- **Code Verifier**: 32-byte random string encoded with base64url
+- **Code Challenge**: SHA256 hash of verifier, base64url encoded
+- **Method**: S256 (SHA256 hashing)
+- **Protection**: Prevents authorization code interception attacks
+
+### State Parameter
+
+- 10-byte random value for CSRF protection
+- Validated on callback to ensure request integrity
+
+### Secure Random Generation
+
+- Uses `crypto/rand` for cryptographically secure random bytes
+- Charset: `[A-Za-z0-9]` (62 characters)
+- Avoids bias through rejection sampling
+
+## Error Handling
+
+<ResponseField name="ErrStateMismatch" type="error">
+  State parameter received in callback doesn't match the sent value
+</ResponseField>
+
+<ResponseField name="ErrMissingIDToken" type="error">
+  ID token not found in the OAuth2 token response
+</ResponseField>
+
+<ResponseField name="ErrMissingCode" type="error">
+  Authorization code missing from callback
+</ResponseField>
+
+<ResponseField name="ErrMissingState" type="error">
+  State parameter missing from callback
+</ResponseField>
+
+<ResponseField name="ProviderError" type="error">
+  Error returned by the OAuth2 provider with error code and description
+</ResponseField>
+
+## Constants
+
+<ResponseField name="scopeOpenID" type="string">
+  OpenID Connect scope ("openid")
+</ResponseField>
+
+<ResponseField name="audienceKey" type="string">
+  OAuth2 parameter key for audience
+</ResponseField>
+
+<ResponseField name="pkceS256" type="string">
+  PKCE code challenge method ("S256")
+</ResponseField>
+
+<ResponseField name="codeVerifierLen" type="int">
+  Length of PKCE code verifier (32 bytes)
+</ResponseField>
+
+## Browser Integration
+
+The package automatically opens the system default browser for authorization:
+
+- **Windows**: Uses `cmd /c start`
+- **macOS**: Uses `open` command
+- **Linux/BSD**: Uses `xdg-open`
+
+A local HTTP server runs on the redirect URL port to capture the callback.
+
+## Callback Response
+
+After successful authentication, users see a success page served from an embedded HTML template (`redirect.html`). The server automatically closes after receiving the callback.

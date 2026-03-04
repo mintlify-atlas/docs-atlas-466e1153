@@ -1,0 +1,480 @@
+---
+title: Server Utilities
+description: HTTP and gRPC server management with multiplexing support
+icon: server
+---
+
+The `server` package provides utilities for managing multiple servers (HTTP, gRPC) with graceful shutdown and multiplexing capabilities.
+
+## Sub-packages
+
+<CardGroup cols={2}>
+  <Card title="Mux" icon="network-wired">
+    Multiplexed server management for HTTP and gRPC
+  </Card>
+  
+  <Card title="SPA" icon="window">
+    Single-page application serving utilities
+  </Card>
+</CardGroup>
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/server/mux
+go get github.com/raystack/salt/server/spa
+```
+
+## Mux Package
+
+The `mux` package allows you to run multiple protocol servers (HTTP, gRPC) concurrently with coordinated lifecycle management and graceful shutdown.
+
+### Features
+
+- **Multi-Protocol Support**: Run HTTP and gRPC servers simultaneously
+- **Graceful Shutdown**: Coordinated shutdown with configurable grace period
+- **Context-Based Control**: Use context cancellation for shutdown
+- **Error Handling**: Proper error propagation from all servers
+
+### Core Function
+
+```go
+func Serve(ctx context.Context, opts ...Option) error
+```
+
+Starts TCP listeners and serves registered protocol servers.
+
+### Quick Start
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "net/http"
+    "os/signal"
+    "syscall"
+    "time"
+    
+    "github.com/raystack/salt/server/mux"
+    "google.golang.org/grpc"
+)
+
+func main() {
+    ctx, cancel := signal.NotifyContext(
+        context.Background(),
+        syscall.SIGINT,
+        syscall.SIGTERM,
+    )
+    defer cancel()
+    
+    // Create HTTP server
+    httpMux := http.NewServeMux()
+    httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte("OK"))
+    })
+    
+    httpServer := &http.Server{
+        Handler:        httpMux,
+        ReadTimeout:    120 * time.Second,
+        WriteTimeout:   120 * time.Second,
+        MaxHeaderBytes: 1 << 20,
+    }
+    
+    // Create gRPC server
+    grpcServer := grpc.NewServer()
+    
+    // Start both servers
+    log.Fatal(mux.Serve(
+        ctx,
+        mux.WithHTTPTarget(":8080", httpServer),
+        mux.WithGRPCTarget(":8081", grpcServer),
+        mux.WithGracePeriod(5*time.Second),
+    ))
+}
+```
+
+### Options
+
+#### WithHTTPTarget
+
+```go
+func WithHTTPTarget(address string, server *http.Server) Option
+```
+
+Adds an HTTP server to the multiplexer.
+
+**Example:**
+
+```go
+httpServer := &http.Server{
+    Handler: myHandler,
+    ReadTimeout: 30 * time.Second,
+    WriteTimeout: 30 * time.Second,
+}
+
+mux.Serve(
+    ctx,
+    mux.WithHTTPTarget(":8080", httpServer),
+)
+```
+
+#### WithGRPCTarget
+
+```go
+func WithGRPCTarget(address string, server *grpc.Server) Option
+```
+
+Adds a gRPC server to the multiplexer.
+
+**Example:**
+
+```go
+grpcServer := grpc.NewServer(
+    grpc.UnaryInterceptor(loggingInterceptor),
+)
+
+mux.Serve(
+    ctx,
+    mux.WithGRPCTarget(":8081", grpcServer),
+)
+```
+
+#### WithGracePeriod
+
+```go
+func WithGracePeriod(duration time.Duration) Option
+```
+
+Sets the grace period for graceful shutdown. Default is 10 seconds.
+
+**Example:**
+
+```go
+mux.Serve(
+    ctx,
+    mux.WithHTTPTarget(":8080", httpServer),
+    mux.WithGracePeriod(30*time.Second),
+)
+```
+
+### Complete Example: HTTP + gRPC Gateway
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "net/http"
+    "os/signal"
+    "syscall"
+    "time"
+    
+    "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+    "github.com/raystack/salt/server/mux"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/reflection"
+    
+    pb "myapp/proto/gen/go"
+)
+
+type MyService struct {
+    pb.UnimplementedMyServiceServer
+}
+
+func (s *MyService) GetVersion(ctx context.Context, req *pb.GetVersionRequest) (*pb.GetVersionResponse, error) {
+    return &pb.GetVersionResponse{Version: "1.0.0"}, nil
+}
+
+func main() {
+    ctx, cancel := signal.NotifyContext(
+        context.Background(),
+        syscall.SIGINT,
+        syscall.SIGTERM,
+    )
+    defer cancel()
+    
+    // Create gRPC server
+    grpcServer := grpc.NewServer()
+    pb.RegisterMyServiceServer(grpcServer, &MyService{})
+    reflection.Register(grpcServer)
+    
+    // Create gRPC Gateway
+    grpcGateway := runtime.NewServeMux()
+    err := pb.RegisterMyServiceHandlerFromEndpoint(
+        ctx,
+        grpcGateway,
+        "localhost:8081",
+        []grpc.DialOption{grpc.WithInsecure()},
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Create HTTP mux with gateway
+    httpMux := http.NewServeMux()
+    httpMux.Handle("/api/", http.StripPrefix("/api", grpcGateway))
+    httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte("OK"))
+    })
+    
+    httpServer := &http.Server{
+        Handler:        httpMux,
+        ReadTimeout:    120 * time.Second,
+        WriteTimeout:   120 * time.Second,
+        MaxHeaderBytes: 1 << 20,
+    }
+    
+    // Start both servers
+    log.Printf("Starting servers...")
+    log.Printf("HTTP server: http://localhost:8080")
+    log.Printf("gRPC server: localhost:8081")
+    
+    if err := mux.Serve(
+        ctx,
+        mux.WithHTTPTarget(":8080", httpServer),
+        mux.WithGRPCTarget(":8081", grpcServer),
+        mux.WithGracePeriod(5*time.Second),
+    ); err != nil {
+        log.Fatal("Server exited with error:", err)
+    }
+}
+```
+
+### Graceful Shutdown Behavior
+
+When the context is cancelled (e.g., by SIGTERM):
+
+1. All servers stop accepting new connections
+2. Existing connections are allowed to complete within the grace period
+3. After the grace period, servers are forcefully stopped
+4. Any errors during shutdown are logged
+
+**Example with custom shutdown handling:**
+
+```go
+ctx, cancel := context.WithCancel(context.Background())
+
+go func() {
+    sigCh := make(chan os.Signal, 1)
+    signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+    <-sigCh
+    
+    log.Println("Shutdown signal received, gracefully stopping servers...")
+    cancel()
+}()
+
+if err := mux.Serve(ctx, opts...); err != nil {
+    log.Printf("Server stopped: %v", err)
+}
+
+log.Println("All servers stopped successfully")
+```
+
+## SPA Package
+
+The `spa` package provides utilities for serving Single-Page Applications with proper fallback handling.
+
+### Features
+
+- **SPA Routing**: Serves index.html for all non-file routes
+- **Static Asset Caching**: Proper cache headers for static files
+- **Development Support**: Auto-reload in development mode
+
+### SPAHandler
+
+```go
+func SPAHandler(staticPath, indexPath string) http.Handler
+```
+
+Creates an HTTP handler that serves a single-page application.
+
+**Example:**
+
+```go
+package main
+
+import (
+    "log"
+    "net/http"
+    
+    "github.com/raystack/salt/server/spa"
+)
+
+func main() {
+    // Serve SPA from ./dist directory
+    spaHandler := spa.SPAHandler("./dist", "index.html")
+    
+    http.Handle("/", spaHandler)
+    
+    log.Println("Serving SPA on http://localhost:3000")
+    log.Fatal(http.ListenAndServe(":3000", nil))
+}
+```
+
+### Complete Example: API + SPA
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "log"
+    "net/http"
+    "os/signal"
+    "syscall"
+    "time"
+    
+    "github.com/raystack/salt/server/mux"
+    "github.com/raystack/salt/server/spa"
+)
+
+type Response struct {
+    Message string `json:"message"`
+}
+
+func main() {
+    ctx, cancel := signal.NotifyContext(
+        context.Background(),
+        syscall.SIGINT,
+        syscall.SIGTERM,
+    )
+    defer cancel()
+    
+    // Create HTTP mux
+    httpMux := http.NewServeMux()
+    
+    // API routes
+    httpMux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+        json.NewEncoder(w).Encode(Response{Message: "OK"})
+    })
+    
+    httpMux.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
+        users := []string{"Alice", "Bob", "Charlie"}
+        json.NewEncoder(w).Encode(users)
+    })
+    
+    // Serve SPA for all other routes
+    spaHandler := spa.SPAHandler("./frontend/dist", "index.html")
+    httpMux.Handle("/", spaHandler)
+    
+    httpServer := &http.Server{
+        Handler:        httpMux,
+        ReadTimeout:    120 * time.Second,
+        WriteTimeout:   120 * time.Second,
+        MaxHeaderBytes: 1 << 20,
+    }
+    
+    log.Println("Starting server on http://localhost:8080")
+    log.Fatal(mux.Serve(
+        ctx,
+        mux.WithHTTPTarget(":8080", httpServer),
+        mux.WithGracePeriod(5*time.Second),
+    ))
+}
+```
+
+## Advanced Patterns
+
+### Multiple HTTP Servers
+
+```go
+// Public API server
+publicServer := &http.Server{
+    Handler: publicAPIHandler,
+}
+
+// Admin API server
+adminServer := &http.Server{
+    Handler: adminAPIHandler,
+}
+
+mux.Serve(
+    ctx,
+    mux.WithHTTPTarget(":8080", publicServer),
+    mux.WithHTTPTarget(":8081", adminServer),
+)
+```
+
+### HTTP + gRPC + Metrics
+
+```go
+package main
+
+import (
+    "net/http"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+func main() {
+    // Main API server
+    apiServer := &http.Server{
+        Handler: apiHandler,
+    }
+    
+    // gRPC server
+    grpcServer := grpc.NewServer()
+    
+    // Metrics server
+    metricsMux := http.NewServeMux()
+    metricsMux.Handle("/metrics", promhttp.Handler())
+    metricsServer := &http.Server{
+        Handler: metricsMux,
+    }
+    
+    mux.Serve(
+        ctx,
+        mux.WithHTTPTarget(":8080", apiServer),
+        mux.WithGRPCTarget(":8081", grpcServer),
+        mux.WithHTTPTarget(":9090", metricsServer),
+    )
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Signal Handling">
+    Always use signal handling for graceful shutdown:
+    ```go
+    ctx, cancel := signal.NotifyContext(
+        context.Background(),
+        syscall.SIGINT,
+        syscall.SIGTERM,
+    )
+    defer cancel()
+    ```
+  </Accordion>
+  
+  <Accordion title="Configure Timeouts">
+    Set appropriate timeouts for HTTP servers:
+    ```go
+    httpServer := &http.Server{
+        ReadTimeout:  30 * time.Second,
+        WriteTimeout: 30 * time.Second,
+        IdleTimeout:  120 * time.Second,
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Separate Admin Endpoints">
+    Run admin/metrics endpoints on a separate port:
+    ```go
+    mux.WithHTTPTarget(":8080", publicServer),
+    mux.WithHTTPTarget(":9090", adminServer),
+    ```
+  </Accordion>
+  
+  <Accordion title="Log Server Status">
+    Log when servers start and stop:
+    ```go
+    log.Println("Starting servers...")
+    if err := mux.Serve(ctx, opts...); err != nil {
+        log.Printf("Server stopped: %v", err)
+    }
+    ```
+  </Accordion>
+</AccordionGroup>

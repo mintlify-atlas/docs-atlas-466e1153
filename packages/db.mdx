@@ -1,0 +1,489 @@
+---
+title: Database Package
+description: Database connection management with pooling and migrations
+icon: database
+---
+
+The `db` package provides a wrapper around `sqlx` for database connection management, connection pooling, and database migrations using `golang-migrate`.
+
+## Features
+
+- **Connection Pooling**: Configurable connection pool settings
+- **Query Timeouts**: Built-in timeout management for queries
+- **Transaction Support**: Safe transaction handling with automatic rollback
+- **Migrations**: Embedded migration support using golang-migrate
+- **Multiple Drivers**: Support for PostgreSQL, MySQL, and more
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/db
+```
+
+## Quick Start
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    
+    "github.com/raystack/salt/db"
+)
+
+func main() {
+    cfg := db.Config{
+        Driver:          "postgres",
+        URL:             "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+        MaxIdleConns:    10,
+        MaxOpenConns:    25,
+        ConnMaxLifeTime: time.Minute * 5,
+        MaxQueryTimeout: time.Second * 10,
+    }
+    
+    client, err := db.New(cfg)
+    if err != nil {
+        log.Fatal("Failed to connect to database:", err)
+    }
+    defer client.Close()
+    
+    // Use the client
+    var count int
+    err = client.Get(&count, "SELECT COUNT(*) FROM users")
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    log.Printf("Total users: %d", count)
+}
+```
+
+## Configuration
+
+### Config
+
+```go
+type Config struct {
+    Driver          string        `yaml:"driver" mapstructure:"driver"`
+    URL             string        `yaml:"url" mapstructure:"url"`
+    MaxIdleConns    int           `yaml:"max_idle_conns" mapstructure:"max_idle_conns" default:"10"`
+    MaxOpenConns    int           `yaml:"max_open_conns" mapstructure:"max_open_conns" default:"10"`
+    ConnMaxLifeTime time.Duration `yaml:"conn_max_life_time" mapstructure:"conn_max_life_time" default:"10ms"`
+    MaxQueryTimeout time.Duration `yaml:"max_query_timeout" mapstructure:"max_query_timeout" default:"100ms"`
+}
+```
+
+**Example configuration file:**
+
+```yaml
+database:
+  driver: postgres
+  url: postgres://user:password@localhost:5432/mydb?sslmode=disable
+  max_idle_conns: 10
+  max_open_conns: 25
+  conn_max_life_time: 5m
+  max_query_timeout: 10s
+```
+
+## Client
+
+### Creating a Client
+
+```go
+func New(cfg Config) (*Client, error)
+```
+
+Creates a new database client with connection pooling.
+
+**Example:**
+
+```go
+client, err := db.New(db.Config{
+    Driver: "postgres",
+    URL:    "postgres://localhost:5432/mydb",
+    MaxOpenConns: 25,
+    MaxIdleConns: 10,
+})
+if err != nil {
+    log.Fatal(err)
+}
+defer client.Close()
+```
+
+### Client Methods
+
+#### WithTimeout
+
+```go
+func (c Client) WithTimeout(ctx context.Context, op func(ctx context.Context) error) error
+```
+
+Executes an operation with the configured query timeout.
+
+**Example:**
+
+```go
+err := client.WithTimeout(ctx, func(ctx context.Context) error {
+    _, err := client.ExecContext(ctx, "UPDATE users SET active = true")
+    return err
+})
+```
+
+#### WithTxn
+
+```go
+func (c Client) WithTxn(ctx context.Context, txnOptions sql.TxOptions, txFunc func(*sqlx.Tx) error) error
+```
+
+Executes a function within a transaction with automatic rollback on error.
+
+**Example:**
+
+```go
+err := client.WithTxn(ctx, sql.TxOptions{}, func(tx *sqlx.Tx) error {
+    _, err := tx.Exec("INSERT INTO users (name) VALUES (?)", "Alice")
+    if err != nil {
+        return err
+    }
+    
+    _, err = tx.Exec("INSERT INTO audit_log (action) VALUES (?)", "user_created")
+    return err
+})
+
+if err != nil {
+    // Transaction was rolled back
+    log.Printf("Transaction failed: %v", err)
+}
+```
+
+#### ConnectionURL
+
+```go
+func (c *Client) ConnectionURL() string
+```
+
+Returns the database connection URL.
+
+```go
+url := client.ConnectionURL()
+```
+
+#### Host
+
+```go
+func (c *Client) Host() string
+```
+
+Returns the database host.
+
+```go
+host := client.Host()
+```
+
+#### Close
+
+```go
+func (c *Client) Close() error
+```
+
+Closes the database connection.
+
+```go
+defer client.Close()
+```
+
+## Queries
+
+The client embeds `*sqlx.DB`, so all sqlx methods are available:
+
+### Get (Single Row)
+
+```go
+type User struct {
+    ID    int    `db:"id"`
+    Name  string `db:"name"`
+    Email string `db:"email"`
+}
+
+var user User
+err := client.Get(&user, "SELECT * FROM users WHERE id = $1", 1)
+```
+
+### Select (Multiple Rows)
+
+```go
+var users []User
+err := client.Select(&users, "SELECT * FROM users WHERE active = $1", true)
+```
+
+### Exec (Insert/Update/Delete)
+
+```go
+result, err := client.Exec(
+    "INSERT INTO users (name, email) VALUES ($1, $2)",
+    "Alice",
+    "alice@example.com",
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+id, _ := result.LastInsertId()
+rowsAffected, _ := result.RowsAffected()
+```
+
+### Named Queries
+
+```go
+type UserFilter struct {
+    MinAge int    `db:"min_age"`
+    City   string `db:"city"`
+}
+
+filter := UserFilter{MinAge: 18, City: "New York"}
+
+var users []User
+query, args, err := client.BindNamed(
+    "SELECT * FROM users WHERE age >= :min_age AND city = :city",
+    filter,
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+err = client.Select(&users, query, args...)
+```
+
+## Transactions
+
+### Simple Transaction
+
+```go
+err := client.WithTxn(ctx, sql.TxOptions{}, func(tx *sqlx.Tx) error {
+    // All operations in this function are part of the transaction
+    _, err := tx.Exec("INSERT INTO accounts (name, balance) VALUES (?, ?)", "Alice", 100)
+    if err != nil {
+        return err // Automatically rolls back
+    }
+    
+    _, err = tx.Exec("UPDATE accounts SET balance = balance - ? WHERE name = ?", 50, "Bob")
+    return err // Commits if nil, rolls back if error
+})
+```
+
+### Transaction with Isolation Level
+
+```go
+err := client.WithTxn(ctx, sql.TxOptions{
+    Isolation: sql.LevelSerializable,
+    ReadOnly:  false,
+}, func(tx *sqlx.Tx) error {
+    // Transaction operations
+    return nil
+})
+```
+
+## Migrations
+
+### RunMigrations
+
+```go
+func RunMigrations(config Config, embeddedMigrations fs.FS, resourcePath string) error
+```
+
+Runs database migrations from embedded files.
+
+**Example:**
+
+```go
+package main
+
+import (
+    "embed"
+    "log"
+    
+    "github.com/raystack/salt/db"
+)
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+func main() {
+    cfg := db.Config{
+        Driver: "postgres",
+        URL:    "postgres://localhost:5432/mydb",
+    }
+    
+    err := db.RunMigrations(cfg, migrations, "migrations")
+    if err != nil {
+        log.Fatal("Migration failed:", err)
+    }
+    
+    log.Println("Migrations completed successfully")
+}
+```
+
+**Migration files structure:**
+
+```
+migrations/
+├── 000001_create_users_table.up.sql
+├── 000001_create_users_table.down.sql
+├── 000002_add_email_index.up.sql
+└── 000002_add_email_index.down.sql
+```
+
+**Example migration file:**
+
+```sql
+-- 000001_create_users_table.up.sql
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### RunRollback
+
+```go
+func RunRollback(config Config, embeddedMigrations fs.FS, resourcePath string) error
+```
+
+Rolls back the last migration.
+
+```go
+err := db.RunRollback(cfg, migrations, "migrations")
+if err != nil {
+    log.Fatal("Rollback failed:", err)
+}
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "context"
+    "database/sql"
+    "embed"
+    "log"
+    "time"
+    
+    "github.com/raystack/salt/db"
+)
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+type User struct {
+    ID        int       `db:"id"`
+    Name      string    `db:"name"`
+    Email     string    `db:"email"`
+    CreatedAt time.Time `db:"created_at"`
+}
+
+func main() {
+    cfg := db.Config{
+        Driver:          "postgres",
+        URL:             "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+        MaxIdleConns:    10,
+        MaxOpenConns:    25,
+        ConnMaxLifeTime: 5 * time.Minute,
+        MaxQueryTimeout: 10 * time.Second,
+    }
+    
+    // Run migrations
+    log.Println("Running migrations...")
+    if err := db.RunMigrations(cfg, migrations, "migrations"); err != nil {
+        log.Fatal("Migration failed:", err)
+    }
+    
+    // Connect to database
+    client, err := db.New(cfg)
+    if err != nil {
+        log.Fatal("Connection failed:", err)
+    }
+    defer client.Close()
+    
+    ctx := context.Background()
+    
+    // Create a user in a transaction
+    err = client.WithTxn(ctx, sql.TxOptions{}, func(tx *sqlx.Tx) error {
+        result, err := tx.Exec(
+            "INSERT INTO users (name, email) VALUES ($1, $2)",
+            "Alice",
+            "alice@example.com",
+        )
+        if err != nil {
+            return err
+        }
+        
+        id, _ := result.LastInsertId()
+        log.Printf("Created user with ID: %d", id)
+        
+        return nil
+    })
+    if err != nil {
+        log.Fatal("Failed to create user:", err)
+    }
+    
+    // Query users
+    var users []User
+    err = client.Select(&users, "SELECT * FROM users ORDER BY created_at DESC LIMIT 10")
+    if err != nil {
+        log.Fatal("Query failed:", err)
+    }
+    
+    log.Printf("Found %d users", len(users))
+    for _, user := range users {
+        log.Printf("- %s (%s)", user.Name, user.Email)
+    }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Connection Pooling">
+    Configure connection pool based on your workload:
+    ```go
+    MaxOpenConns: 25,  // Max concurrent connections
+    MaxIdleConns: 10,  // Keep idle connections ready
+    ConnMaxLifeTime: 5 * time.Minute,  // Recycle connections
+    ```
+  </Accordion>
+  
+  <Accordion title="Always Use Transactions for Multi-Step Operations">
+    Wrap related operations in transactions:
+    ```go
+    client.WithTxn(ctx, sql.TxOptions{}, func(tx *sqlx.Tx) error {
+        // Multiple related operations
+        return nil
+    })
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Context for Timeouts">
+    Pass context through all database operations:
+    ```go
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    client.GetContext(ctx, &user, query)
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Connection Errors Gracefully">
+    Always check for connection errors and retry if appropriate:
+    ```go
+    if err != nil {
+        if isConnectionError(err) {
+            // Retry logic
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>

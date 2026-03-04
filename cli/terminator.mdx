@@ -1,0 +1,492 @@
+---
+title: Terminator
+description: Terminal detection and utilities for TTY, pagers, browsers, and Homebrew
+---
+
+The `terminator` package provides utilities for terminal detection, pager management, browser launching, and Homebrew integration.
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/cli/terminator
+```
+
+## Terminal Detection
+
+### TTY Detection
+
+Check if the application is running in a terminal:
+
+```go
+import "github.com/raystack/salt/cli/terminator"
+
+if terminator.IsTTY() {
+    // Running in terminal - can use colors, prompts, etc.
+    fmt.Println("Running in terminal")
+} else {
+    // Output is redirected or piped - use plain text
+    fmt.Println("Output redirected")
+}
+```
+
+### Use Cases
+
+```go
+func printOutput(data interface{}) {
+    if terminator.IsTTY() {
+        // Interactive terminal - use colors and formatting
+        printer.PrettyJSON(data)
+    } else {
+        // Piped or redirected - use machine-readable format
+        printer.JSON(data)
+    }
+}
+```
+
+### Color Detection
+
+Check if color output is disabled:
+
+```go
+if terminator.IsColorDisabled() {
+    // User set NO_COLOR environment variable
+    // Use plain text without colors
+    fmt.Println("Colors disabled")
+} else {
+    // Colors are allowed
+    printer.Success("Colors enabled")
+}
+```
+
+### CI Detection
+
+Detect if running in a Continuous Integration environment:
+
+```go
+if terminator.IsCI() {
+    // Running in CI - disable interactive features
+    fmt.Println("CI environment detected")
+    
+    // Skip interactive prompts
+    // Use default values
+    // Disable spinners and animations
+} else {
+    // Local development - enable interactive features
+    p := prompter.New()
+    value, _ := p.Input("Enter value:", "default")
+}
+```
+
+Detects these CI environments:
+- GitHub Actions
+- Travis CI
+- CircleCI
+- Cirrus CI
+- GitLab CI
+- AppVeyor
+- CodeShip
+- Jenkins
+- TeamCity
+- TaskCluster
+
+## Pager Management
+
+Display long output in a paginated format using a pager like `less` or `more`.
+
+### Basic Usage
+
+```go
+import "github.com/raystack/salt/cli/terminator"
+
+pager := terminator.NewPager()
+
+// Start the pager
+if err := pager.Start(); err != nil {
+    log.Fatal(err)
+}
+defer pager.Stop()
+
+// Write output to pager
+fmt.Fprintln(pager.Out, "Line 1")
+fmt.Fprintln(pager.Out, "Line 2")
+fmt.Fprintln(pager.Out, "Line 3")
+// ... many more lines
+```
+
+### Pager Configuration
+
+The pager respects the `PAGER` environment variable:
+
+```bash
+# Use less
+export PAGER="less"
+
+# Use less with options
+export PAGER="less -R"
+
+# Use more
+export PAGER="more"
+
+# Disable pager
+export PAGER="cat"
+```
+
+### Custom Pager
+
+```go
+pager := terminator.NewPager()
+pager.Set("less -R")  // Set custom pager command
+
+if err := pager.Start(); err != nil {
+    log.Fatal(err)
+}
+defer pager.Stop()
+
+fmt.Fprintln(pager.Out, "Output goes here")
+```
+
+### Pager Example
+
+```go
+func displayLogs(logs []string) error {
+    // Only use pager if in TTY
+    if !terminator.IsTTY() {
+        for _, log := range logs {
+            fmt.Println(log)
+        }
+        return nil
+    }
+
+    // Use pager for long output
+    pager := terminator.NewPager()
+    if err := pager.Start(); err != nil {
+        return err
+    }
+    defer pager.Stop()
+
+    for _, log := range logs {
+        fmt.Fprintln(pager.Out, log)
+    }
+
+    return nil
+}
+```
+
+### Pager Type
+
+```go
+type Pager struct {
+    Out    io.Writer   // Writer to send output to pager
+    ErrOut io.Writer   // Writer for error output
+}
+```
+
+### Pager Methods
+
+```go
+// Create new pager (uses PAGER env var or "more")
+pager := terminator.NewPager()
+
+// Set custom pager command
+pager.Set("less -R")
+
+// Get current pager command
+cmd := pager.Get()
+
+// Start pager process
+err := pager.Start()
+
+// Stop pager process and cleanup
+pager.Stop()
+```
+
+## Browser Integration
+
+Open URLs in the default web browser.
+
+### Basic Usage
+
+```go
+import (
+    "runtime"
+    "github.com/raystack/salt/cli/terminator"
+)
+
+url := "https://example.com"
+cmd := terminator.OpenBrowser(runtime.GOOS, url)
+
+if err := cmd.Run(); err != nil {
+    log.Printf("Failed to open browser: %v", err)
+}
+```
+
+### Cross-Platform Support
+
+```go
+func openDocs() error {
+    if !terminator.IsTTY() {
+        return fmt.Errorf("cannot open browser: not a TTY")
+    }
+
+    url := "https://docs.example.com"
+    cmd := terminator.OpenBrowser(runtime.GOOS, url)
+    
+    return cmd.Run()
+}
+```
+
+### Supported Platforms
+
+- **macOS**: Uses `open` command
+- **Windows**: Uses `cmd /c start` command
+- **Linux**: Uses `xdg-open` or `wslview` (for WSL)
+
+### Non-blocking Browser Launch
+
+```go
+func openBrowserAsync(url string) {
+    cmd := terminator.OpenBrowser(runtime.GOOS, url)
+    
+    // Start in background
+    if err := cmd.Start(); err != nil {
+        log.Printf("Failed to open browser: %v", err)
+        return
+    }
+    
+    // Don't wait for browser to close
+    go func() {
+        cmd.Wait()
+    }()
+    
+    fmt.Println("Opening browser...")
+}
+```
+
+### Interactive Browser Prompt
+
+```go
+func openDocumentation() error {
+    url := "https://docs.example.com"
+    
+    fmt.Printf("Documentation: %s\n", url)
+    
+    if terminator.IsTTY() {
+        p := prompter.New()
+        open, err := p.Confirm("Open in browser?", true)
+        if err != nil {
+            return err
+        }
+        
+        if open {
+            cmd := terminator.OpenBrowser(runtime.GOOS, url)
+            return cmd.Run()
+        }
+    }
+    
+    return nil
+}
+```
+
+## Homebrew Integration
+
+Utilities for detecting and working with Homebrew on macOS/Linux.
+
+### Check Homebrew Installation
+
+```go
+if terminator.HasHomebrew() {
+    fmt.Println("Homebrew is installed")
+} else {
+    fmt.Println("Homebrew is not installed")
+}
+```
+
+### Check if Binary is from Homebrew
+
+```go
+import "os"
+
+func checkInstallation() {
+    execPath, err := os.Executable()
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    if terminator.IsUnderHomebrew(execPath) {
+        fmt.Println("This tool was installed via Homebrew")
+    } else {
+        fmt.Println("This tool was not installed via Homebrew")
+    }
+}
+```
+
+### Update Check Example
+
+```go
+func checkForUpdates() {
+    execPath, _ := os.Executable()
+    
+    if terminator.IsUnderHomebrew(execPath) {
+        fmt.Println("To update, run: brew upgrade mytool")
+    } else {
+        fmt.Println("Download latest version from GitHub releases")
+    }
+}
+```
+
+## Complete Example
+
+Here's a complete example combining multiple terminal utilities:
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "os"
+    "runtime"
+    "strings"
+
+    "github.com/raystack/salt/cli/printer"
+    "github.com/raystack/salt/cli/prompter"
+    "github.com/raystack/salt/cli/terminator"
+)
+
+func main() {
+    // Detect environment
+    if terminator.IsCI() {
+        fmt.Println("Running in CI - using defaults")
+        runNonInteractive()
+        return
+    }
+
+    if !terminator.IsTTY() {
+        fmt.Println("Not a TTY - using machine-readable output")
+        runNonInteractive()
+        return
+    }
+
+    // Interactive mode
+    runInteractive()
+}
+
+func runInteractive() {
+    // Check colors
+    if terminator.IsColorDisabled() {
+        fmt.Println("Colors disabled by user")
+    } else {
+        printer.Boldln("Interactive Mode")
+    }
+
+    // Get logs
+    logs := generateLogs(100)
+
+    // Use pager for long output
+    if err := displayWithPager(logs); err != nil {
+        log.Fatal(err)
+    }
+
+    // Offer to open documentation
+    p := prompter.New()
+    openDocs, err := p.Confirm("Open documentation?", false)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    if openDocs {
+        cmd := terminator.OpenBrowser(runtime.GOOS, "https://docs.example.com")
+        if err := cmd.Run(); err != nil {
+            printer.Warningf("Failed to open browser: %v\n", err)
+        }
+    }
+
+    // Check installation method
+    execPath, _ := os.Executable()
+    if terminator.IsUnderHomebrew(execPath) {
+        printer.Infoln("Installed via Homebrew")
+        printer.Infoln("Update with: brew upgrade mytool")
+    }
+}
+
+func runNonInteractive() {
+    logs := generateLogs(100)
+    for _, log := range logs {
+        fmt.Println(log)
+    }
+}
+
+func displayWithPager(logs []string) error {
+    pager := terminator.NewPager()
+    
+    if err := pager.Start(); err != nil {
+        return err
+    }
+    defer pager.Stop()
+
+    // Write header
+    fmt.Fprintln(pager.Out, "Application Logs")
+    fmt.Fprintln(pager.Out, strings.Repeat("=", 50))
+    fmt.Fprintln(pager.Out)
+
+    // Write logs
+    for i, log := range logs {
+        fmt.Fprintf(pager.Out, "%3d: %s\n", i+1, log)
+    }
+
+    return nil
+}
+
+func generateLogs(count int) []string {
+    logs := make([]string, count)
+    for i := 0; i < count; i++ {
+        logs[i] = fmt.Sprintf("Log entry %d", i+1)
+    }
+    return logs
+}
+```
+
+## Best Practices
+
+1. **Always check IsTTY** - Before using interactive features or colors
+2. **Respect NO_COLOR** - Check `IsColorDisabled()` before using colors
+3. **Handle CI environments** - Use `IsCI()` to skip interactive prompts
+4. **Use pagers for long output** - Improve UX for viewing large amounts of data
+5. **Defer pager cleanup** - Always use `defer pager.Stop()`
+6. **Check TTY before opening browser** - Browser commands require a terminal
+7. **Provide fallbacks** - Always offer non-interactive alternatives
+8. **Test in different environments** - Test with TTY, piped output, and CI
+
+## Environment Variables
+
+### PAGER
+
+Controls which pager to use:
+
+```bash
+export PAGER="less -R"    # Use less with color support
+export PAGER="more"       # Use more
+export PAGER="cat"        # Disable pager
+```
+
+### NO_COLOR
+
+Disables color output:
+
+```bash
+export NO_COLOR=1         # Disable colors
+```
+
+### CI
+
+Indicates CI environment:
+
+```bash
+export CI=true            # Mark as CI environment
+```
+
+## Related
+
+- [Commander](/cli/commander) - Cobra CLI manager
+- [Printer](/cli/printer) - Terminal output utilities
+- [Prompter](/cli/prompter) - Interactive prompts

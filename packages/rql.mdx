@@ -1,0 +1,463 @@
+---
+title: RQL Package
+description: REST Query Language parser for advanced filtering and sorting
+icon: filter
+---
+
+The `rql` (REST Query Language) package provides a powerful query parser for REST APIs, enabling advanced filtering, sorting, pagination, and grouping through JSON query parameters.
+
+## Features
+
+- **Advanced Filtering**: Support for multiple operators (eq, neq, like, gt, lt, etc.)
+- **Type Validation**: Validates query parameters against struct definitions
+- **Sorting**: Multi-field sorting with ascending/descending order
+- **Pagination**: Built-in offset and limit support
+- **Search**: Fuzzy search across multiple fields
+- **Group By**: Result grouping capabilities
+- **Type Safety**: Strong typing with struct tags
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/rql
+```
+
+## Quick Start
+
+### Define Your Model
+
+```go
+type Organization struct {
+    Id              int       `rql:"name=id,type=number"`
+    Title           string    `rql:"name=title,type=string"`
+    BillingPlanName string    `rql:"name=plan_name,type=string"`
+    MemberCount     int       `rql:"name=member_count,type=number"`
+    CreatedAt       time.Time `rql:"name=created_at,type=datetime"`
+    Enabled         bool      `rql:"name=enabled,type=bool"`
+}
+```
+
+### Parse and Validate Query
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+    
+    "github.com/raystack/salt/rql"
+)
+
+func main() {
+    queryJSON := `{
+        "filters": [
+            {"name": "enabled", "operator": "eq", "value": true},
+            {"name": "created_at", "operator": "gte", "value": "2025-01-01T00:00:00Z"}
+        ],
+        "sort": [
+            {"name": "title", "order": "asc"}
+        ],
+        "offset": 0,
+        "limit": 50
+    }`
+    
+    query := &rql.Query{}
+    err := json.Unmarshal([]byte(queryJSON), query)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Validate against model
+    err = rql.ValidateQuery(query, Organization{})
+    if err != nil {
+        log.Fatal("Invalid query:", err)
+    }
+    
+    fmt.Printf("Valid query with %d filters\n", len(query.Filters))
+}
+```
+
+## Core Types
+
+### Query
+
+```go
+type Query struct {
+    Filters []Filter `json:"filters"`
+    GroupBy []string `json:"group_by"`
+    Offset  int      `json:"offset"`
+    Limit   int      `json:"limit"`
+    Search  string   `json:"search"`
+    Sort    []Sort   `json:"sort"`
+}
+```
+
+Main query structure containing all query parameters.
+
+### Filter
+
+```go
+type Filter struct {
+    Name     string `json:"name"`
+    Operator string `json:"operator"`
+    Value    any    `json:"value"`
+}
+```
+
+Represents a single filter condition.
+
+### Sort
+
+```go
+type Sort struct {
+    Name  string `json:"name"`  // Field name
+    Order string `json:"order"` // "asc" or "desc"
+}
+```
+
+Defines sorting criteria.
+
+## Struct Tags
+
+Use `rql` tags to define field properties:
+
+```go
+type Model struct {
+    FieldName Type `rql:"name=api_name,type=datatype"`
+}
+```
+
+**Parameters:**
+- `name`: API field name (used in queries)
+- `type`: Data type (number, string, datetime, bool)
+
+**Example:**
+
+```go
+type User struct {
+    ID        int       `rql:"name=id,type=number"`
+    Email     string    `rql:"name=email,type=string"`
+    CreatedAt time.Time `rql:"name=created_at,type=datetime"`
+    IsActive  bool      `rql:"name=is_active,type=bool"`
+}
+```
+
+## Data Types
+
+Supported data types and their operators:
+
+### Number
+
+**Type:** `number`  
+**Operators:** `eq`, `neq`, `gt`, `lt`, `gte`, `lte`
+
+```go
+Age int `rql:"name=age,type=number"`
+```
+
+**Query example:**
+```json
+{"name": "age", "operator": "gte", "value": 18}
+```
+
+### String
+
+**Type:** `string`  
+**Operators:** `eq`, `neq`, `like`, `notlike`, `in`, `notin`, `empty`, `notempty`
+
+```go
+Name string `rql:"name=name,type=string"`
+```
+
+**Query examples:**
+```json
+{"name": "name", "operator": "like", "value": "john"}
+{"name": "status", "operator": "in", "value": "active,pending"}
+{"name": "description", "operator": "notempty", "value": null}
+```
+
+### Boolean
+
+**Type:** `bool`  
+**Operators:** `eq`, `neq`
+
+```go
+IsActive bool `rql:"name=is_active,type=bool"`
+```
+
+**Query example:**
+```json
+{"name": "is_active", "operator": "eq", "value": true}
+```
+
+### DateTime
+
+**Type:** `datetime`  
+**Operators:** `eq`, `neq`, `gt`, `lt`, `gte`, `lte`  
+**Format:** RFC3339 (ISO 8601)
+
+```go
+CreatedAt time.Time `rql:"name=created_at,type=datetime"`
+```
+
+**Query example:**
+```json
+{"name": "created_at", "operator": "gte", "value": "2025-01-01T00:00:00Z"}
+```
+
+## Operators
+
+| Operator | Description | Example |
+|----------|-------------|----------|
+| `eq` | Equals | `{"operator": "eq", "value": 10}` |
+| `neq` | Not equals | `{"operator": "neq", "value": 0}` |
+| `gt` | Greater than | `{"operator": "gt", "value": 100}` |
+| `lt` | Less than | `{"operator": "lt", "value": 50}` |
+| `gte` | Greater than or equal | `{"operator": "gte", "value": 18}` |
+| `lte` | Less than or equal | `{"operator": "lte", "value": 65}` |
+| `like` | Pattern match | `{"operator": "like", "value": "john"}` |
+| `notlike` | Pattern not match | `{"operator": "notlike", "value": "test"}` |
+| `in` | In list | `{"operator": "in", "value": "a,b,c"}` |
+| `notin` | Not in list | `{"operator": "notin", "value": "x,y"}` |
+| `empty` | Is empty/null | `{"operator": "empty"}` |
+| `notempty` | Is not empty | `{"operator": "notempty"}` |
+
+## Validation
+
+### ValidateQuery
+
+```go
+func ValidateQuery(q *Query, checkStruct interface{}) error
+```
+
+Validates a query against a struct definition.
+
+**Checks:**
+- Field names exist in struct
+- Data types match struct definitions
+- Operators are valid for field types
+- Sort fields are valid
+- Group by fields are valid
+
+```go
+query := &rql.Query{ /* ... */ }
+err := rql.ValidateQuery(query, Organization{})
+if err != nil {
+    // Handle validation error
+}
+```
+
+### GetDataTypeOfField
+
+```go
+func GetDataTypeOfField(fieldName string, checkStruct interface{}) (string, error)
+```
+
+Returns the data type of a specific field.
+
+```go
+dataType, err := rql.GetDataTypeOfField("created_at", Organization{})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(dataType) // "datetime"
+```
+
+## Complete Example: REST API Handler
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "net/http"
+    "time"
+    
+    "github.com/doug-martin/goqu/v9"
+    "github.com/raystack/salt/rql"
+)
+
+type Organization struct {
+    Id          int       `db:"id" rql:"name=id,type=number"`
+    Title       string    `db:"title" rql:"name=title,type=string"`
+    PlanName    string    `db:"plan_name" rql:"name=plan_name,type=string"`
+    MemberCount int       `db:"member_count" rql:"name=member_count,type=number"`
+    CreatedAt   time.Time `db:"created_at" rql:"name=created_at,type=datetime"`
+    Enabled     bool      `db:"enabled" rql:"name=enabled,type=bool"`
+}
+
+func listOrganizations(w http.ResponseWriter, r *http.Request) {
+    // Parse request body
+    var query rql.Query
+    if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
+        http.Error(w, "Invalid request", http.StatusBadRequest)
+        return
+    }
+    
+    // Validate query
+    if err := rql.ValidateQuery(&query, Organization{}); err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+    
+    // Build SQL query using goqu
+    sqlQuery := goqu.From("organizations")
+    
+    // Apply filters
+    for _, filter := range query.Filters {
+        sqlQuery = sqlQuery.Where(goqu.Ex{
+            filter.Name: goqu.Op{filter.Operator: filter.Value},
+        })
+    }
+    
+    // Apply search (fuzzy search on multiple columns)
+    if query.Search != "" {
+        fuzzyColumns := []string{"title", "plan_name"}
+        expressions := make([]goqu.Expression, len(fuzzyColumns))
+        for i, col := range fuzzyColumns {
+            expressions[i] = goqu.Ex{col: goqu.Op{"like": "%" + query.Search + "%"}}
+        }
+        sqlQuery = sqlQuery.Where(goqu.Or(expressions...))
+    }
+    
+    // Apply sorting
+    for _, sort := range query.Sort {
+        if sort.Order == "asc" {
+            sqlQuery = sqlQuery.Order(goqu.C(sort.Name).Asc())
+        } else {
+            sqlQuery = sqlQuery.Order(goqu.C(sort.Name).Desc())
+        }
+    }
+    
+    // Apply pagination
+    sqlQuery = sqlQuery.Offset(uint(query.Offset)).Limit(uint(query.Limit))
+    
+    // Execute query
+    sql, args, _ := sqlQuery.ToSQL()
+    
+    // ... execute SQL and return results
+    
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "query": sql,
+        "args":  args,
+    })
+}
+
+func main() {
+    http.HandleFunc("/api/organizations", listOrganizations)
+    http.ListenAndServe(":8080", nil)
+}
+```
+
+## Query Examples
+
+### Basic Filtering
+
+```json
+{
+  "filters": [
+    {"name": "enabled", "operator": "eq", "value": true},
+    {"name": "member_count", "operator": "gte", "value": 10}
+  ],
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### With Sorting
+
+```json
+{
+  "filters": [
+    {"name": "plan_name", "operator": "eq", "value": "premium"}
+  ],
+  "sort": [
+    {"name": "created_at", "order": "desc"},
+    {"name": "title", "order": "asc"}
+  ],
+  "limit": 20
+}
+```
+
+### With Search
+
+```json
+{
+  "search": "tech",
+  "filters": [
+    {"name": "enabled", "operator": "eq", "value": true}
+  ],
+  "limit": 10
+}
+```
+
+### Date Range Query
+
+```json
+{
+  "filters": [
+    {"name": "created_at", "operator": "gte", "value": "2025-01-01T00:00:00Z"},
+    {"name": "created_at", "operator": "lt", "value": "2025-12-31T23:59:59Z"}
+  ]
+}
+```
+
+### Complex Query
+
+```json
+{
+  "filters": [
+    {"name": "enabled", "operator": "eq", "value": true},
+    {"name": "plan_name", "operator": "in", "value": "premium,enterprise"},
+    {"name": "member_count", "operator": "gte", "value": 5},
+    {"name": "title", "operator": "like", "value": "tech"}
+  ],
+  "sort": [
+    {"name": "member_count", "order": "desc"}
+  ],
+  "offset": 20,
+  "limit": 10,
+  "search": "startup"
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Validate All Queries">
+    Always validate user queries before execution:
+    ```go
+    if err := rql.ValidateQuery(query, Model{}); err != nil {
+        return http.StatusBadRequest, err
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Set Default Limits">
+    Protect against large queries:
+    ```go
+    if query.Limit == 0 || query.Limit > 100 {
+        query.Limit = 50 // Default
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Struct Tags Consistently">
+    Keep API names separate from database columns:
+    ```go
+    type User struct {
+        ID int `db:"user_id" rql:"name=id,type=number"`
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Document Supported Fields">
+    Provide API documentation showing:
+    - Available fields for filtering
+    - Supported operators per field
+    - Valid sort fields
+  </Accordion>
+</AccordionGroup>

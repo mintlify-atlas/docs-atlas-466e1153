@@ -1,0 +1,236 @@
+---
+title: 'Server Package'
+description: 'HTTP and gRPC server multiplexer for serving multiple protocols'
+---
+
+The `server` package provides utilities for serving HTTP and gRPC servers with graceful shutdown support.
+
+## Package: mux
+
+The `mux` package provides a multiplexer that can serve HTTP and gRPC servers on different ports simultaneously with coordinated graceful shutdown.
+
+### Serve
+
+```go
+func Serve(ctx context.Context, opts ...Option) error
+```
+
+Starts TCP listeners and serves the registered protocol servers of the given serveTarget(s) and blocks until the servers exit. Context can be cancelled to perform graceful shutdown.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for controlling server lifecycle. Cancel this context to trigger graceful shutdown.
+</ParamField>
+
+<ParamField path="opts" type="...Option">
+  Variable number of Option functions to configure the server targets and settings.
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Returns an error if no serve targets are configured or if server startup fails.
+</ResponseField>
+
+#### Example
+
+```go
+package main
+
+import (
+    "context"
+    "net/http"
+    "time"
+    
+    "github.com/raystack/salt/server/mux"
+    "google.golang.org/grpc"
+)
+
+func main() {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+    
+    httpServer := &http.Server{
+        Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            w.Write([]byte("Hello, HTTP!"))
+        }),
+    }
+    
+    grpcServer := grpc.NewServer()
+    // Register your gRPC services here
+    
+    err := mux.Serve(ctx,
+        mux.WithHTTPTarget(":8080", httpServer),
+        mux.WithGRPCTarget(":9090", grpcServer),
+        mux.WithGracePeriod(10*time.Second),
+    )
+    if err != nil {
+        panic(err)
+    }
+}
+```
+
+## Options
+
+### WithHTTPTarget
+
+```go
+func WithHTTPTarget(addr string, srv *http.Server) Option
+```
+
+Configures an HTTP server to be served on the specified address.
+
+<ParamField path="addr" type="string" required>
+  The address to bind the HTTP server to (e.g., ":8080", "localhost:8080").
+</ParamField>
+
+<ParamField path="srv" type="*http.Server" required>
+  The HTTP server instance to serve. The server's Addr field will be set to the provided address.
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  Returns an Option function that configures the mux server with this HTTP target.
+</ResponseField>
+
+### WithGRPCTarget
+
+```go
+func WithGRPCTarget(addr string, srv *grpc.Server) Option
+```
+
+Configures a gRPC server to be served on the specified address.
+
+<ParamField path="addr" type="string" required>
+  The address to bind the gRPC server to (e.g., ":9090", "localhost:9090").
+</ParamField>
+
+<ParamField path="srv" type="*grpc.Server" required>
+  The gRPC server instance to serve.
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  Returns an Option function that configures the mux server with this gRPC target.
+</ResponseField>
+
+### WithGracePeriod
+
+```go
+func WithGracePeriod(d time.Duration) Option
+```
+
+Sets the wait duration for graceful shutdown. If the duration is less than or equal to 0, the default grace period of 10 seconds is used.
+
+<ParamField path="d" type="time.Duration" required>
+  The duration to wait for graceful shutdown. Must be positive, otherwise defaults to 10 seconds.
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  Returns an Option function that configures the graceful shutdown period.
+</ResponseField>
+
+---
+
+## Package: spa
+
+The `spa` package provides a simple and efficient HTTP handler for serving Single Page Applications (SPAs) from embedded file systems.
+
+### Features
+
+- Serves static assets from an embedded file system
+- Fallback to an index file for client-side routing
+- Optional gzip compression for supported clients
+- Prevents directory traversal attacks
+
+### Handler
+
+```go
+func Handler(build embed.FS, dir string, index string, gzip bool) (http.Handler, error)
+```
+
+Returns an HTTP handler for serving a Single Page Application (SPA). The handler serves static files from the specified directory in the embedded file system and falls back to serving the index file if a requested file is not found. This is useful for client-side routing in SPAs.
+
+<ParamField path="build" type="embed.FS" required>
+  An embedded file system containing the build assets.
+</ParamField>
+
+<ParamField path="dir" type="string" required>
+  The directory within the embedded file system where the static files are located.
+</ParamField>
+
+<ParamField path="index" type="string" required>
+  The name of the index file (usually "index.html").
+</ParamField>
+
+<ParamField path="gzip" type="bool" required>
+  If true, the response body will be compressed using gzip for clients that support it.
+</ParamField>
+
+<ResponseField name="handler" type="http.Handler">
+  An HTTP handler that serves the SPA with optional gzip compression.
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Returns an error if the file system or index file cannot be initialized.
+</ResponseField>
+
+#### Example
+
+```go
+package main
+
+import (
+    "embed"
+    "log"
+    "net/http"
+    
+    "github.com/raystack/salt/server/spa"
+)
+
+//go:embed build/*
+var build embed.FS
+
+func main() {
+    handler, err := spa.Handler(build, "build", "index.html", true)
+    if err != nil {
+        log.Fatalf("Failed to initialize SPA handler: %v", err)
+    }
+    
+    log.Println("Serving SPA on http://localhost:8080")
+    http.ListenAndServe(":8080", handler)
+}
+```
+
+## Best Practices
+
+### Graceful Shutdown
+
+Always provide a context for controlling server lifecycle:
+
+```go
+ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer cancel()
+
+err := mux.Serve(ctx,
+    mux.WithHTTPTarget(":8080", httpServer),
+    mux.WithGracePeriod(15*time.Second),
+)
+```
+
+### Multiple Protocols
+
+Serve HTTP and gRPC on different ports:
+
+```go
+err := mux.Serve(ctx,
+    mux.WithHTTPTarget(":8080", httpServer),
+    mux.WithGRPCTarget(":9090", grpcServer),
+)
+```
+
+### SPA with Embedded Assets
+
+Use Go's `embed` package to bundle your frontend:
+
+```go
+//go:embed dist/*
+var staticFiles embed.FS
+
+handler, _ := spa.Handler(staticFiles, "dist", "index.html", true)
+```

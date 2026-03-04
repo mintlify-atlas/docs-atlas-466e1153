@@ -1,0 +1,490 @@
+---
+title: Logging Package
+description: Structured logging with multiple backend implementations
+icon: file-lines
+---
+
+The `log` package provides a simple, consistent logging interface with support for multiple backend implementations including Logrus and a no-op logger for testing.
+
+## Features
+
+- **Simple Interface**: Consistent API across different implementations
+- **Structured Logging**: Key-value pairs for better log parsing
+- **Multiple Backends**: Logrus, no-op, and extensible for custom loggers
+- **Log Levels**: Debug, Info, Warn, Error, and Fatal
+- **Configurable**: Control log level, output format, and destination
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/log
+```
+
+## Logger Interface
+
+```go
+type Logger interface {
+    Debug(msg string, args ...interface{})
+    Info(msg string, args ...interface{})
+    Warn(msg string, args ...interface{})
+    Error(msg string, args ...interface{})
+    Fatal(msg string, args ...interface{})
+    Level() string
+    Writer() io.Writer
+}
+```
+
+All log methods take a message string followed by alternating key-value pairs:
+
+```go
+logger.Info("user logged in", "user_id", 123, "ip_address", "192.168.1.1")
+```
+
+## Logrus Implementation
+
+### Creating a Logrus Logger
+
+```go
+func NewLogrus(opts ...Option) *Logrus
+```
+
+**Example:**
+
+```go
+package main
+
+import (
+    "github.com/raystack/salt/log"
+)
+
+func main() {
+    logger := log.NewLogrus(
+        log.LogrusWithLevel("info"),
+    )
+    
+    logger.Info("application started")
+}
+```
+
+### Logrus Options
+
+#### LogrusWithLevel
+
+```go
+func LogrusWithLevel(level string) Option
+```
+
+Sets the log level. Valid values: `debug`, `info`, `warn`, `error`, `fatal`, `panic`.
+
+**Example:**
+
+```go
+logger := log.NewLogrus(
+    log.LogrusWithLevel("debug"),
+)
+
+logger.Debug("detailed debug information", "key", "value")
+```
+
+#### LogrusWithWriter
+
+```go
+func LogrusWithWriter(writer io.Writer) Option
+```
+
+Sets the output destination for logs.
+
+**Example:**
+
+```go
+import "os"
+
+logger := log.NewLogrus(
+    log.LogrusWithWriter(os.Stderr),
+)
+```
+
+**Write to file:**
+
+```go
+file, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+if err != nil {
+    panic(err)
+}
+defer file.Close()
+
+logger := log.NewLogrus(
+    log.LogrusWithWriter(file),
+)
+```
+
+#### LogrusWithFormatter
+
+```go
+func LogrusWithFormatter(f logrus.Formatter) Option
+```
+
+Customizes the log output format.
+
+**JSON Format:**
+
+```go
+import "github.com/sirupsen/logrus"
+
+logger := log.NewLogrus(
+    log.LogrusWithFormatter(&logrus.JSONFormatter{}),
+)
+```
+
+**Custom Formatter:**
+
+```go
+type PlainFormatter struct{}
+
+func (p *PlainFormatter) Format(entry *logrus.Entry) ([]byte, error) {
+    return []byte(entry.Message + "\n"), nil
+}
+
+logger := log.NewLogrus(
+    log.LogrusWithFormatter(&PlainFormatter{}),
+)
+```
+
+## Log Levels
+
+### Debug
+
+Detailed information for debugging:
+
+```go
+logger.Debug("processing request", "request_id", "abc123", "user_id", 456)
+```
+
+### Info
+
+General informational messages:
+
+```go
+logger.Info("server started", "port", 8080, "environment", "production")
+```
+
+### Warn
+
+Warning messages for potentially harmful situations:
+
+```go
+logger.Warn("rate limit approaching", "current", 95, "limit", 100)
+```
+
+### Error
+
+Error messages for serious problems:
+
+```go
+if err != nil {
+    logger.Error("failed to save user", "error", err, "user_id", userID)
+}
+```
+
+### Fatal
+
+Critical errors that cause application exit:
+
+```go
+if err := connectDB(); err != nil {
+    logger.Fatal("cannot connect to database", "error", err)
+    // Application exits here
+}
+```
+
+## No-op Logger
+
+For testing or when logging is not needed:
+
+```go
+func NewNoop(opts ...Option) *Noop
+```
+
+**Example:**
+
+```go
+logger := log.NewNoop()
+
+// These calls do nothing
+logger.Info("message")
+logger.Error("error message")
+```
+
+Useful in tests:
+
+```go
+func TestMyFunction(t *testing.T) {
+    logger := log.NewNoop()
+    
+    // Test code that uses logger
+    result := myFunction(logger)
+    
+    assert.Equal(t, expected, result)
+}
+```
+
+## Structured Logging
+
+The logger uses key-value pairs for structured logging:
+
+```go
+timeTaken := time.Duration(time.Second * 1)
+logger.Info("request processed",
+    "method", "GET",
+    "path", "/api/users",
+    "duration", timeTaken,
+    "status", 200,
+)
+```
+
+**Output (JSON format):**
+
+```json
+{
+  "level": "info",
+  "msg": "request processed",
+  "method": "GET",
+  "path": "/api/users",
+  "duration": 1000000000,
+  "status": 200,
+  "time": "2026-03-04T10:30:45Z"
+}
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    "time"
+    
+    "github.com/raystack/salt/log"
+    "github.com/sirupsen/logrus"
+)
+
+func main() {
+    // Configure logger
+    logger := log.NewLogrus(
+        log.LogrusWithLevel("info"),
+        log.LogrusWithFormatter(&logrus.JSONFormatter{
+            TimestampFormat: time.RFC3339,
+            PrettyPrint:     false,
+        }),
+    )
+    
+    logger.Info("application starting",
+        "version", "1.0.0",
+        "environment", os.Getenv("ENV"),
+    )
+    
+    // Simulate some work
+    start := time.Now()
+    processData(logger)
+    duration := time.Since(start)
+    
+    logger.Info("application completed",
+        "duration", duration.Seconds(),
+    )
+}
+
+func processData(logger log.Logger) {
+    logger.Debug("starting data processing")
+    
+    items := []string{"item1", "item2", "item3"}
+    
+    for i, item := range items {
+        logger.Debug("processing item",
+            "index", i,
+            "item", item,
+        )
+        
+        time.Sleep(100 * time.Millisecond)
+    }
+    
+    logger.Info("data processing complete",
+        "items_processed", len(items),
+    )
+}
+```
+
+## Integration with Config
+
+```go
+package main
+
+import (
+    "github.com/raystack/salt/config"
+    "github.com/raystack/salt/log"
+)
+
+type Config struct {
+    Log LogConfig `mapstructure:"log"`
+}
+
+type LogConfig struct {
+    Level string `mapstructure:"level" default:"info"`
+}
+
+func main() {
+    // Load configuration
+    loader := config.NewLoader(
+        config.WithFile("config.yaml"),
+    )
+    
+    cfg := &Config{}
+    if err := loader.Load(cfg); err != nil {
+        panic(err)
+    }
+    
+    // Create logger with configured level
+    logger := log.NewLogrus(
+        log.LogrusWithLevel(cfg.Log.Level),
+    )
+    
+    logger.Info("logger initialized", "level", logger.Level())
+}
+```
+
+## HTTP Middleware Example
+
+```go
+package main
+
+import (
+    "net/http"
+    "time"
+    
+    "github.com/raystack/salt/log"
+)
+
+func loggingMiddleware(logger log.Logger, next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        
+        // Create a response writer wrapper to capture status code
+        wrapped := &responseWriter{ResponseWriter: w, statusCode: 200}
+        
+        // Call the next handler
+        next.ServeHTTP(wrapped, r)
+        
+        // Log the request
+        duration := time.Since(start)
+        logger.Info("http request",
+            "method", r.Method,
+            "path", r.URL.Path,
+            "status", wrapped.statusCode,
+            "duration_ms", duration.Milliseconds(),
+            "remote_addr", r.RemoteAddr,
+        )
+    })
+}
+
+type responseWriter struct {
+    http.ResponseWriter
+    statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+    rw.statusCode = code
+    rw.ResponseWriter.WriteHeader(code)
+}
+
+func main() {
+    logger := log.NewLogrus(log.LogrusWithLevel("info"))
+    
+    mux := http.NewServeMux()
+    mux.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte("users"))
+    })
+    
+    handler := loggingMiddleware(logger, mux)
+    
+    http.ListenAndServe(":8080", handler)
+}
+```
+
+## Error Logging with Context
+
+```go
+func processOrder(logger log.Logger, orderID string) error {
+    logger.Debug("processing order", "order_id", orderID)
+    
+    // Simulate processing
+    err := validateOrder(orderID)
+    if err != nil {
+        logger.Error("order validation failed",
+            "order_id", orderID,
+            "error", err,
+            "step", "validation",
+        )
+        return err
+    }
+    
+    err = chargePayment(orderID)
+    if err != nil {
+        logger.Error("payment processing failed",
+            "order_id", orderID,
+            "error", err,
+            "step", "payment",
+        )
+        return err
+    }
+    
+    logger.Info("order processed successfully", "order_id", orderID)
+    return nil
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Appropriate Log Levels">
+    Choose the right level for each message:
+    ```go
+    logger.Debug("detailed debug info")     // Development only
+    logger.Info("user action")              // Important events
+    logger.Warn("deprecated API used")      // Warnings
+    logger.Error("failed operation", err)   // Errors
+    logger.Fatal("critical failure", err)   // Application exit
+    ```
+  </Accordion>
+  
+  <Accordion title="Always Use Key-Value Pairs">
+    Provide context with structured data:
+    ```go
+    logger.Info("user action",
+        "action", "login",
+        "user_id", userID,
+        "ip", ipAddress,
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Don't Log Sensitive Data">
+    Never log passwords, tokens, or PII:
+    ```go
+    // Bad
+    logger.Info("login", "password", password)
+    
+    // Good
+    logger.Info("login attempt", "user_id", userID)
+    ```
+  </Accordion>
+  
+  <Accordion title="Use JSON Format in Production">
+    JSON logs are easier to parse and analyze:
+    ```go
+    logger := log.NewLogrus(
+        log.LogrusWithFormatter(&logrus.JSONFormatter{}),
+    )
+    ```
+  </Accordion>
+</AccordionGroup>

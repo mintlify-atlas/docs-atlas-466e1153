@@ -1,0 +1,464 @@
+---
+title: 'Config Package'
+description: 'Complete API reference for the Salt config package'
+---
+
+## Overview
+
+The `config` package provides a flexible and extensible configuration management solution for Go applications. It integrates configuration files, environment variables, command-line flags, and default values to populate and validate user-defined structs.
+
+### Configuration Precedence
+
+The `Loader` merges configuration values from multiple sources in the following order of precedence (highest to lowest):
+
+1. **Command-line flags** - Defined using `pflag.FlagSet` and dynamically bound via `cmdx` tags
+2. **Environment variables** - Dynamically bound to configuration keys, optionally prefixed using `WithEnvPrefix`
+3. **Configuration file** - YAML configuration files specified via `WithFile`
+4. **Default values** - Struct fields annotated with `default` tags
+
+## Types
+
+### Loader
+
+```go
+type Loader struct {
+    // contains filtered or unexported fields
+}
+```
+
+Loader is responsible for managing configuration from multiple sources.
+
+### Option
+
+```go
+type Option func(c *Loader)
+```
+
+Option defines a functional option for configuring the Loader.
+
+## Functions
+
+### NewLoader
+
+```go
+func NewLoader(options ...Option) *Loader
+```
+
+Creates a new Loader instance with the provided options. It initializes Viper with defaults for YAML configuration files and environment variable handling.
+
+<ParamField path="options" type="...Option">
+  Optional configuration functions to customize the loader behavior
+</ParamField>
+
+<ResponseField name="Loader" type="*Loader">
+  A configured Loader instance ready to load configuration
+</ResponseField>
+
+**Example:**
+
+```go
+loader := config.NewLoader(
+    config.WithFile("./config.yaml"),
+    config.WithEnvPrefix("MYAPP"),
+)
+```
+
+### WithFile
+
+```go
+func WithFile(configFilePath string) Option
+```
+
+Specifies the configuration file to use.
+
+<ParamField path="configFilePath" type="string" required>
+  Path to the YAML configuration file
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  A configuration option that sets the config file path
+</ResponseField>
+
+**Example:**
+
+```go
+loader := config.NewLoader(
+    config.WithFile("/etc/myapp/config.yaml"),
+)
+```
+
+### WithEnvPrefix
+
+```go
+func WithEnvPrefix(prefix string) Option
+```
+
+Specifies a prefix for environment variables.
+
+<ParamField path="prefix" type="string" required>
+  Prefix for environment variables (e.g., "MYAPP" will match "MYAPP_SERVER_PORT")
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  A configuration option that sets the environment variable prefix
+</ResponseField>
+
+**Example:**
+
+```go
+loader := config.NewLoader(
+    config.WithEnvPrefix("MYAPP"),
+)
+// Will bind to environment variables like MYAPP_SERVER_PORT
+```
+
+### WithFlags
+
+```go
+func WithFlags(flags *pflag.FlagSet) Option
+```
+
+Specifies a command-line flag set to bind dynamically based on `cmdx` tags.
+
+<ParamField path="flags" type="*pflag.FlagSet" required>
+  A pflag.FlagSet containing command-line flags to bind
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  A configuration option that enables flag binding
+</ResponseField>
+
+**Example:**
+
+```go
+flags := pflag.NewFlagSet("myapp", pflag.ExitOnError)
+flags.Int("server.port", 8080, "Server port")
+
+loader := config.NewLoader(
+    config.WithFlags(flags),
+)
+```
+
+### WithAppConfig
+
+```go
+func WithAppConfig(app string) Option
+```
+
+Sets up application-specific configuration file handling. Automatically determines the appropriate configuration directory based on the operating system.
+
+<ParamField path="app" type="string" required>
+  Application name (used to create app-specific config file path)
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  A configuration option that sets up OS-specific config paths
+</ResponseField>
+
+**Configuration Paths:**
+
+- Linux/macOS: `$XDG_CONFIG_HOME/raystack/{app}.yml` or `$HOME/.config/raystack/{app}.yml`
+- Windows: `%APPDATA%/raystack/{app}.yml`
+- Custom: `$RAYSTACK_CONFIG_DIR/raystack/{app}.yml` (if set)
+
+**Example:**
+
+```go
+loader := config.NewLoader(
+    config.WithAppConfig("myapp"),
+)
+// Creates config at ~/.config/raystack/myapp.yml
+```
+
+## Methods
+
+### Load
+
+```go
+func (l *Loader) Load(config interface{}) error
+```
+
+Reads the configuration from the file, environment variables, and command-line flags, and merges them into the provided configuration struct. It validates the configuration using struct tags.
+
+<ParamField path="config" type="interface{}" required>
+  Pointer to a struct that will be populated with configuration values
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Returns an error if loading or validation fails, nil on success
+</ResponseField>
+
+**Example:**
+
+```go
+type Config struct {
+    ServerPort int    `mapstructure:"server.port" default:"8080" validate:"required,min=1"`
+    LogLevel   string `mapstructure:"log.level" default:"info" validate:"required,oneof=debug info warn error"`
+}
+
+cfg := &Config{}
+if err := loader.Load(cfg); err != nil {
+    log.Fatalf("Failed to load configuration: %v", err)
+}
+```
+
+### Init
+
+```go
+func (l *Loader) Init(config interface{}) error
+```
+
+Initializes the configuration file with default values. Returns an error if the file already exists.
+
+<ParamField path="config" type="interface{}" required>
+  Pointer to a struct with default values to write to the config file
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Returns an error if the file exists or cannot be created
+</ResponseField>
+
+**Example:**
+
+```go
+cfg := &Config{}
+if err := loader.Init(cfg); err != nil {
+    log.Fatalf("Failed to initialize config: %v", err)
+}
+```
+
+### Get
+
+```go
+func (l *Loader) Get(key string) interface{}
+```
+
+Retrieves a configuration value by key.
+
+<ParamField path="key" type="string" required>
+  Dot-notation key for the configuration value (e.g., "server.port")
+</ParamField>
+
+<ResponseField name="value" type="interface{}">
+  The configuration value, or nil if not found
+</ResponseField>
+
+**Example:**
+
+```go
+port := loader.Get("server.port")
+if port != nil {
+    fmt.Printf("Server port: %v\n", port)
+}
+```
+
+### Set
+
+```go
+func (l *Loader) Set(key string, value interface{})
+```
+
+Updates a configuration value in memory (not persisted to file unless Save is called).
+
+<ParamField path="key" type="string" required>
+  Dot-notation key for the configuration value
+</ParamField>
+
+<ParamField path="value" type="interface{}" required>
+  The new value to set
+</ParamField>
+
+**Example:**
+
+```go
+loader.Set("server.port", 9090)
+loader.Save() // Persist to file
+```
+
+### Save
+
+```go
+func (l *Loader) Save() error
+```
+
+Writes the current configuration to the file specified during initialization.
+
+<ResponseField name="error" type="error">
+  Returns an error if no config file is specified or writing fails
+</ResponseField>
+
+**Example:**
+
+```go
+loader.Set("server.port", 9090)
+if err := loader.Save(); err != nil {
+    log.Fatalf("Failed to save config: %v", err)
+}
+```
+
+### View
+
+```go
+func (l *Loader) View() (string, error)
+```
+
+Returns the current configuration as a formatted JSON string.
+
+<ResponseField name="json" type="string">
+  Pretty-printed JSON representation of the configuration
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Returns an error if JSON marshaling fails
+</ResponseField>
+
+**Example:**
+
+```go
+jsonConfig, err := loader.View()
+if err == nil {
+    fmt.Println(jsonConfig)
+}
+```
+
+## Struct Tags
+
+Configuration structs use the following struct tags to define behavior:
+
+### mapstructure
+
+Maps YAML or environment variables to struct fields.
+
+```go
+type Config struct {
+    ServerPort int `mapstructure:"server.port"`
+}
+```
+
+### default
+
+Provides fallback values for fields when no source overrides them.
+
+```go
+type Config struct {
+    ServerPort int `default:"8080"`
+}
+```
+
+### validate
+
+Ensures the final configuration meets application-specific requirements using [go-playground/validator](https://github.com/go-playground/validator) syntax.
+
+```go
+type Config struct {
+    ServerPort int `validate:"required,min=1,max=65535"`
+}
+```
+
+### cmdx
+
+Binds command-line flags to configuration fields.
+
+```go
+type Config struct {
+    ServerPort int `cmdx:"server.port"`
+}
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "os"
+    
+    "github.com/raystack/salt/config"
+    "github.com/spf13/pflag"
+)
+
+type Config struct {
+    Server struct {
+        Port int    `mapstructure:"server.port" cmdx:"server.port" default:"8080" validate:"required,min=1,max=65535"`
+        Host string `mapstructure:"server.host" cmdx:"server.host" default:"localhost" validate:"required"`
+    } `mapstructure:"server"`
+    
+    LogLevel string `mapstructure:"log.level" cmdx:"log.level" default:"info" validate:"required,oneof=debug info warn error"`
+}
+
+func main() {
+    // Define command-line flags
+    flags := pflag.NewFlagSet("myapp", pflag.ExitOnError)
+    flags.Int("server.port", 8080, "Server port")
+    flags.String("server.host", "localhost", "Server host")
+    flags.String("log.level", "info", "Log level")
+    
+    // Create loader with multiple options
+    loader := config.NewLoader(
+        config.WithFile("./config.yaml"),
+        config.WithEnvPrefix("MYAPP"),
+        config.WithFlags(flags),
+    )
+    
+    // Parse command-line arguments
+    flags.Parse(os.Args[1:])
+    
+    // Load configuration
+    cfg := &Config{}
+    if err := loader.Load(cfg); err != nil {
+        log.Fatalf("Failed to load configuration: %v", err)
+    }
+    
+    fmt.Printf("Server: %s:%d\n", cfg.Server.Host, cfg.Server.Port)
+    fmt.Printf("Log level: %s\n", cfg.LogLevel)
+    
+    // View current configuration
+    jsonConfig, _ := loader.View()
+    fmt.Println("Current configuration:")
+    fmt.Println(jsonConfig)
+}
+```
+
+## Environment Variable Mapping
+
+Environment variables are automatically mapped to configuration keys using dot notation replacement:
+
+- Dots (`.`) are replaced with underscores (`_`)
+- The environment prefix is prepended if specified
+
+**Examples:**
+
+```bash
+# Without prefix
+export SERVER_PORT=9090
+export LOG_LEVEL=debug
+
+# With prefix "MYAPP"
+export MYAPP_SERVER_PORT=9090
+export MYAPP_LOG_LEVEL=debug
+```
+
+## Error Handling
+
+The config package returns descriptive errors for common scenarios:
+
+- **File not found**: Warning printed, falls back to defaults and environment variables
+- **Invalid struct**: Returns error if config parameter is not a pointer to a struct
+- **Validation failure**: Returns detailed validation errors with field names
+- **Missing flags**: Returns error if `cmdx` tag references non-existent flag
+- **Marshal errors**: Returns error if configuration cannot be serialized
+
+**Example error handling:**
+
+```go
+if err := loader.Load(cfg); err != nil {
+    if strings.Contains(err.Error(), "invalid configuration") {
+        // Handle validation errors
+        fmt.Fprintf(os.Stderr, "Configuration validation failed: %v\n", err)
+        os.Exit(1)
+    }
+    log.Fatalf("Failed to load configuration: %v", err)
+}
+```

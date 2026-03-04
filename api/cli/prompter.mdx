@@ -1,0 +1,447 @@
+---
+title: Prompter
+description: Interactive user input interface for CLI applications with support for selections, multi-select, text input, and confirmations
+icon: messages-question
+---
+
+## Overview
+
+Prompter provides a clean interface for gathering user input in CLI applications. Built on top of [AlecAivazis/survey](https://github.com/AlecAivazis/survey), it supports single selection, multi-selection, text input, and yes/no confirmations.
+
+## Interface
+
+The Prompter interface defines methods for interactive user input.
+
+```go
+type Prompter interface {
+    Select(message, defaultValue string, options []string) (int, error)
+    MultiSelect(message, defaultValue string, options []string) ([]int, error)
+    Input(message, defaultValue string) (string, error)
+    Confirm(message string, defaultValue bool) (bool, error)
+}
+```
+
+## Functions
+
+### New
+
+Creates a new Prompter instance.
+
+```go
+func New() Prompter
+```
+
+<ResponseField name="Prompter" type="Prompter">
+  A new Prompter instance ready for user interaction
+</ResponseField>
+
+**Example:**
+
+```go
+prompter := prompter.New()
+```
+
+## Methods
+
+### Select
+
+Prompts the user to select one option from a list.
+
+```go
+func (p *Prompter) Select(message, defaultValue string, options []string) (int, error)
+```
+
+<ParamField path="message" type="string" required>
+  The prompt message to display to the user
+</ParamField>
+
+<ParamField path="defaultValue" type="string">
+  The default selected option (must match one of the options)
+</ParamField>
+
+<ParamField path="options" type="[]string" required>
+  List of options to display (page size: 20)
+</ParamField>
+
+<ResponseField name="index" type="int">
+  Zero-based index of the selected option
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the prompt fails or user cancels (Ctrl+C)
+</ResponseField>
+
+**Example:**
+
+```go
+prompter := prompter.New()
+
+options := []string{"Development", "Staging", "Production"}
+index, err := prompter.Select(
+    "Select environment:",
+    "Development",
+    options,
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+selected := options[index]
+fmt.Printf("Deploying to %s\n", selected)
+```
+
+**Output:**
+```
+? Select environment: [Use arrows to move, type to filter]
+> Development
+  Staging
+  Production
+```
+
+### MultiSelect
+
+Prompts the user to select multiple options from a list.
+
+```go
+func (p *Prompter) MultiSelect(message, defaultValue string, options []string) ([]int, error)
+```
+
+<ParamField path="message" type="string" required>
+  The prompt message to display to the user
+</ParamField>
+
+<ParamField path="defaultValue" type="string">
+  Comma-separated default values (must match options)
+</ParamField>
+
+<ParamField path="options" type="[]string" required>
+  List of options to display (page size: 20)
+</ParamField>
+
+<ResponseField name="indices" type="[]int">
+  Slice of zero-based indices of selected options
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the prompt fails or user cancels (Ctrl+C)
+</ResponseField>
+
+**Example:**
+
+```go
+prompter := prompter.New()
+
+services := []string{"api", "web", "worker", "scheduler"}
+indices, err := prompter.MultiSelect(
+    "Select services to restart:",
+    "",
+    services,
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+if len(indices) == 0 {
+    fmt.Println("No services selected")
+    return
+}
+
+fmt.Println("Restarting services:")
+for _, idx := range indices {
+    fmt.Printf("  - %s\n", services[idx])
+}
+```
+
+**Output:**
+```
+? Select services to restart: [Use arrows to move, space to select, type to filter]
+  [ ] api
+  [x] web
+  [x] worker
+  [ ] scheduler
+```
+
+### Input
+
+Prompts the user for text input.
+
+```go
+func (p *Prompter) Input(message, defaultValue string) (string, error)
+```
+
+<ParamField path="message" type="string" required>
+  The prompt message to display to the user
+</ParamField>
+
+<ParamField path="defaultValue" type="string">
+  Default value shown in the input field
+</ParamField>
+
+<ResponseField name="input" type="string">
+  User's text input
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the prompt fails or user cancels (Ctrl+C)
+</ResponseField>
+
+**Example:**
+
+```go
+prompter := prompter.New()
+
+name, err := prompter.Input(
+    "Enter project name:",
+    "my-project",
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Creating project: %s\n", name)
+```
+
+**Output:**
+```
+? Enter project name: my-project
+```
+
+### Confirm
+
+Prompts the user for a yes/no confirmation.
+
+```go
+func (p *Prompter) Confirm(message string, defaultValue bool) (bool, error)
+```
+
+<ParamField path="message" type="string" required>
+  The confirmation question to display
+</ParamField>
+
+<ParamField path="defaultValue" type="bool" required>
+  Default answer (true for yes, false for no)
+</ParamField>
+
+<ResponseField name="confirmed" type="bool">
+  True if user confirmed (yes), false otherwise (no)
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the prompt fails or user cancels (Ctrl+C)
+</ResponseField>
+
+**Example:**
+
+```go
+prompter := prompter.New()
+
+confirmed, err := prompter.Confirm(
+    "Delete all data?",
+    false,
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+if confirmed {
+    fmt.Println("Deleting data...")
+} else {
+    fmt.Println("Cancelled")
+}
+```
+
+**Output:**
+```
+? Delete all data? (y/N)
+```
+
+## Error Handling
+
+All methods return an error if:
+- User cancels the prompt (Ctrl+C)
+- Terminal doesn't support interactive input
+- Internal survey error occurs
+
+**Example:**
+
+```go
+index, err := prompter.Select("Choose option:", "", options)
+if err != nil {
+    if err.Error() == "interrupt" {
+        fmt.Println("\nOperation cancelled")
+        os.Exit(0)
+    }
+    log.Fatal(err)
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Provide Sensible Defaults">
+    Always provide default values to improve user experience:
+    
+    ```go
+    // Good: User can just press Enter
+    env, err := prompter.Select(
+        "Select environment:",
+        "Development",  // Default
+        []string{"Development", "Staging", "Production"},
+    )
+
+    // Avoid: No default, user must navigate
+    env, err := prompter.Select(
+        "Select environment:",
+        "",  // No default
+        []string{"Development", "Staging", "Production"},
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Handle Cancellation Gracefully">
+    Check for interrupt errors and exit cleanly:
+    
+    ```go
+    result, err := prompter.Input("Enter value:", "")
+    if err != nil {
+        if strings.Contains(err.Error(), "interrupt") {
+            fmt.Println("\nCancelled")
+            return nil
+        }
+        return err
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Validate Input">
+    Validate user input before using it:
+    
+    ```go
+    for {
+        name, err := prompter.Input("Project name:", "")
+        if err != nil {
+            return err
+        }
+        
+        if isValidName(name) {
+            break
+        }
+        
+        fmt.Println("Invalid name. Use alphanumeric characters only.")
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Confirm Destructive Operations">
+    Always confirm before destructive actions:
+    
+    ```go
+    confirmed, err := prompter.Confirm(
+        "This will delete all data. Continue?",
+        false,  // Default to No
+    )
+    if err != nil || !confirmed {
+        fmt.Println("Operation cancelled")
+        return
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "strings"
+
+    "github.com/raystack/salt/cli/prompter"
+    "github.com/raystack/salt/cli/printer"
+)
+
+func main() {
+    p := prompter.New()
+
+    // Get project name
+    projectName, err := p.Input(
+        "Enter project name:",
+        "my-app",
+    )
+    if err != nil {
+        handleError(err)
+        return
+    }
+
+    // Select environment
+    environments := []string{"Development", "Staging", "Production"}
+    envIdx, err := p.Select(
+        "Select deployment environment:",
+        "Development",
+        environments,
+    )
+    if err != nil {
+        handleError(err)
+        return
+    }
+    environment := environments[envIdx]
+
+    // Select services
+    services := []string{"api", "web", "worker", "scheduler"}
+    serviceIndices, err := p.MultiSelect(
+        "Select services to deploy:",
+        "",
+        services,
+    )
+    if err != nil {
+        handleError(err)
+        return
+    }
+
+    if len(serviceIndices) == 0 {
+        printer.Warningln("No services selected")
+        return
+    }
+
+    // Show summary
+    fmt.Println("\nDeployment Configuration:")
+    fmt.Printf("  Project: %s\n", projectName)
+    fmt.Printf("  Environment: %s\n", environment)
+    fmt.Printf("  Services: ")
+    for i, idx := range serviceIndices {
+        if i > 0 {
+            fmt.Print(", ")
+        }
+        fmt.Print(services[idx])
+    }
+    fmt.Println()
+
+    // Confirm deployment
+    confirmed, err := p.Confirm(
+        "\nProceed with deployment?",
+        true,
+    )
+    if err != nil {
+        handleError(err)
+        return
+    }
+
+    if !confirmed {
+        printer.Infoln("Deployment cancelled")
+        return
+    }
+
+    // Proceed with deployment
+    printer.Successln("Starting deployment...")
+}
+
+func handleError(err error) {
+    if strings.Contains(err.Error(), "interrupt") {
+        fmt.Println("\nOperation cancelled")
+        return
+    }
+    log.Fatal(err)
+}
+```

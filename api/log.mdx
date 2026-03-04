@@ -1,0 +1,786 @@
+---
+title: 'Log Package'
+description: 'Complete API reference for the Salt log package'
+---
+
+## Overview
+
+The `log` package provides a convenient, unified logging interface for Go applications. It supports multiple logging backends including Zap, Logrus, and a no-operation logger for testing.
+
+### Key Features
+
+- **Unified interface** - Single `Logger` interface for multiple backends
+- **Structured logging** - Support for key-value pairs
+- **Multiple backends** - Zap, Logrus, and Noop implementations
+- **Context support** - Store and retrieve loggers from context (Zap)
+- **Flexible configuration** - Customizable log levels, formatters, and outputs
+
+## Logger Interface
+
+```go
+type Logger interface {
+    Debug(msg string, args ...interface{})
+    Info(msg string, args ...interface{})
+    Warn(msg string, args ...interface{})
+    Error(msg string, args ...interface{})
+    Fatal(msg string, args ...interface{})
+    Level() string
+    Writer() io.Writer
+}
+```
+
+The Logger interface provides structured logging with key-value pairs. Each log method takes a message string followed by alternating key-value arguments.
+
+**Usage pattern:**
+
+```go
+logger.Info("processed request", 
+    "duration", time.Millisecond*150,
+    "status", 200,
+    "path", "/api/users",
+)
+```
+
+<Note>
+  Keys should always be strings, while values can be any printable type.
+</Note>
+
+### Methods
+
+#### Debug
+
+```go
+Debug(msg string, args ...interface{})
+```
+
+Logs a debug-level message with optional key-value pairs.
+
+<ParamField path="msg" type="string" required>
+  The log message
+</ParamField>
+
+<ParamField path="args" type="...interface{}">
+  Alternating key-value pairs (key must be string)
+</ParamField>
+
+**Example:**
+
+```go
+logger.Debug("cache lookup", "key", "user:123", "hit", true)
+```
+
+#### Info
+
+```go
+Info(msg string, args ...interface{})
+```
+
+Logs an info-level message with optional key-value pairs.
+
+<ParamField path="msg" type="string" required>
+  The log message
+</ParamField>
+
+<ParamField path="args" type="...interface{}">
+  Alternating key-value pairs (key must be string)
+</ParamField>
+
+**Example:**
+
+```go
+logger.Info("server started", "port", 8080, "environment", "production")
+```
+
+#### Warn
+
+```go
+Warn(msg string, args ...interface{})
+```
+
+Logs a warning-level message with optional key-value pairs.
+
+<ParamField path="msg" type="string" required>
+  The log message
+</ParamField>
+
+<ParamField path="args" type="...interface{}">
+  Alternating key-value pairs (key must be string)
+</ParamField>
+
+**Example:**
+
+```go
+logger.Warn("rate limit approaching", "current", 95, "limit", 100)
+```
+
+#### Error
+
+```go
+Error(msg string, args ...interface{})
+```
+
+Logs an error-level message with optional key-value pairs.
+
+<ParamField path="msg" type="string" required>
+  The log message
+</ParamField>
+
+<ParamField path="args" type="...interface{}">
+  Alternating key-value pairs (key must be string)
+</ParamField>
+
+**Example:**
+
+```go
+logger.Error("database connection failed", "error", err, "retry", 3)
+```
+
+#### Fatal
+
+```go
+Fatal(msg string, args ...interface{})
+```
+
+Logs a fatal-level message with optional key-value pairs and exits the application.
+
+<ParamField path="msg" type="string" required>
+  The log message
+</ParamField>
+
+<ParamField path="args" type="...interface{}">
+  Alternating key-value pairs (key must be string)
+</ParamField>
+
+<Warning>
+  Fatal level calls `os.Exit(1)` after logging. Use only for unrecoverable errors.
+</Warning>
+
+**Example:**
+
+```go
+logger.Fatal("failed to start server", "error", err)
+```
+
+#### Level
+
+```go
+Level() string
+```
+
+Returns the current log level as a string.
+
+<ResponseField name="level" type="string">
+  The current log level (e.g., "debug", "info", "warn", "error")
+</ResponseField>
+
+**Example:**
+
+```go
+currentLevel := logger.Level()
+fmt.Printf("Logging at level: %s\n", currentLevel)
+```
+
+#### Writer
+
+```go
+Writer() io.Writer
+```
+
+Returns the io.Writer used for log output.
+
+<ResponseField name="writer" type="io.Writer">
+  The writer where logs are output
+</ResponseField>
+
+**Example:**
+
+```go
+w := logger.Writer()
+fmt.Fprintf(w, "Direct write to log output\n")
+```
+
+## Option Type
+
+```go
+type Option func(interface{})
+```
+
+Option is a functional option type that modifies logger behavior. Each logger implementation provides its own set of options.
+
+## Zap Logger
+
+### NewZap
+
+```go
+func NewZap(opts ...Option) *Zap
+```
+
+Creates a new Zap logger instance with info level as the default log level.
+
+<ParamField path="opts" type="...Option">
+  Optional configuration functions for the Zap logger
+</ParamField>
+
+<ResponseField name="Zap" type="*Zap">
+  A configured Zap logger instance
+</ResponseField>
+
+**Example:**
+
+```go
+logger := log.NewZap(
+    log.ZapWithConfig(zapConfig),
+)
+```
+
+### ZapWithConfig
+
+```go
+func ZapWithConfig(conf zap.Config, opts ...zap.Option) Option
+```
+
+Configures the Zap logger with a custom zap.Config.
+
+<ParamField path="conf" type="zap.Config" required>
+  Zap configuration object
+</ParamField>
+
+<ParamField path="opts" type="...zap.Option">
+  Additional Zap options
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  A configuration option for the Zap logger
+</ResponseField>
+
+**Example:**
+
+```go
+import "go.uber.org/zap"
+
+zapConfig := zap.NewProductionConfig()
+zapConfig.Level.SetLevel(zap.DebugLevel)
+
+logger := log.NewZap(
+    log.ZapWithConfig(zapConfig),
+)
+```
+
+### ZapWithNoop
+
+```go
+func ZapWithNoop() Option
+```
+
+Configures the Zap logger as a no-operation logger (useful for testing).
+
+<ResponseField name="Option" type="Option">
+  A configuration option that disables logging
+</ResponseField>
+
+**Example:**
+
+```go
+logger := log.NewZap(
+    log.ZapWithNoop(),
+)
+```
+
+### Zap Context Methods
+
+#### NewContext
+
+```go
+func (z Zap) NewContext(ctx context.Context) context.Context
+```
+
+Adds the Zap logger to a context.
+
+<ParamField path="ctx" type="context.Context" required>
+  The parent context
+</ParamField>
+
+<ResponseField name="context" type="context.Context">
+  A new context containing the logger
+</ResponseField>
+
+**Example:**
+
+```go
+logger := log.NewZap()
+ctx := logger.NewContext(context.Background())
+```
+
+#### ZapFromContext
+
+```go
+func ZapFromContext(ctx context.Context) Zap
+```
+
+Retrieves a Zap logger from a context.
+
+<ParamField path="ctx" type="context.Context" required>
+  The context containing the logger
+</ParamField>
+
+<ResponseField name="Zap" type="Zap">
+  The Zap logger from context, or empty Zap if not found
+</ResponseField>
+
+**Example:**
+
+```go
+logger := log.ZapFromContext(ctx)
+logger.Info("retrieved from context")
+```
+
+#### ZapContextWithFields
+
+```go
+func ZapContextWithFields(ctx context.Context, fields ...zap.Field) context.Context
+```
+
+Adds structured fields to the logger in a context.
+
+<ParamField path="ctx" type="context.Context" required>
+  The context containing the logger
+</ParamField>
+
+<ParamField path="fields" type="...zap.Field" required>
+  Zap fields to add to the logger
+</ParamField>
+
+<ResponseField name="context" type="context.Context">
+  A new context with the enhanced logger
+</ResponseField>
+
+**Example:**
+
+```go
+import "go.uber.org/zap"
+
+ctx = log.ZapContextWithFields(ctx,
+    zap.String("request_id", "abc123"),
+    zap.String("user_id", "user456"),
+)
+
+logger := log.ZapFromContext(ctx)
+logger.Info("processing") // Automatically includes request_id and user_id
+```
+
+#### GetInternalZapLogger
+
+```go
+func (z Zap) GetInternalZapLogger() *zap.SugaredLogger
+```
+
+Returns the internal Zap SugaredLogger instance for advanced usage.
+
+<ResponseField name="logger" type="*zap.SugaredLogger">
+  The underlying Zap sugared logger
+</ResponseField>
+
+**Example:**
+
+```go
+zapLogger := logger.GetInternalZapLogger()
+zapLogger.With("key", "value").Info("message")
+```
+
+## Logrus Logger
+
+### NewLogrus
+
+```go
+func NewLogrus(opts ...Option) *Logrus
+```
+
+Creates a new Logrus logger instance with info level as the default log level.
+
+<ParamField path="opts" type="...Option">
+  Optional configuration functions for the Logrus logger
+</ParamField>
+
+<ResponseField name="Logrus" type="*Logrus">
+  A configured Logrus logger instance
+</ResponseField>
+
+**Example:**
+
+```go
+logger := log.NewLogrus(
+    log.LogrusWithLevel("debug"),
+    log.LogrusWithWriter(os.Stdout),
+)
+```
+
+### LogrusWithLevel
+
+```go
+func LogrusWithLevel(level string) Option
+```
+
+Sets the log level for the Logrus logger.
+
+<ParamField path="level" type="string" required>
+  Log level: "trace", "debug", "info", "warn", "error", "fatal", or "panic"
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  A configuration option that sets the log level
+</ResponseField>
+
+**Example:**
+
+```go
+logger := log.NewLogrus(
+    log.LogrusWithLevel("debug"),
+)
+```
+
+### LogrusWithWriter
+
+```go
+func LogrusWithWriter(writer io.Writer) Option
+```
+
+Sets the output writer for the Logrus logger.
+
+<ParamField path="writer" type="io.Writer" required>
+  The io.Writer where logs will be written
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  A configuration option that sets the output writer
+</ResponseField>
+
+**Example:**
+
+```go
+import "os"
+
+logFile, _ := os.Create("app.log")
+logger := log.NewLogrus(
+    log.LogrusWithWriter(logFile),
+)
+```
+
+### LogrusWithFormatter
+
+```go
+func LogrusWithFormatter(f logrus.Formatter) Option
+```
+
+Sets a custom formatter for the Logrus logger.
+
+<ParamField path="f" type="logrus.Formatter" required>
+  A Logrus formatter implementation
+</ParamField>
+
+<ResponseField name="Option" type="Option">
+  A configuration option that sets the formatter
+</ResponseField>
+
+**Example:**
+
+```go
+import "github.com/sirupsen/logrus"
+
+logger := log.NewLogrus(
+    log.LogrusWithFormatter(&logrus.JSONFormatter{}),
+)
+
+// Custom formatter example
+type PlainFormatter struct{}
+
+func (p *PlainFormatter) Format(entry *logrus.Entry) ([]byte, error) {
+    return []byte(entry.Message), nil
+}
+
+logger := log.NewLogrus(
+    log.LogrusWithFormatter(&PlainFormatter{}),
+)
+```
+
+### Entry
+
+```go
+func (l *Logrus) Entry(args ...interface{}) *logrus.Entry
+```
+
+Creates a Logrus entry with the specified fields for advanced usage.
+
+<ParamField path="args" type="...interface{}">
+  Alternating key-value pairs to add as fields
+</ParamField>
+
+<ResponseField name="entry" type="*logrus.Entry">
+  A Logrus entry with the specified fields
+</ResponseField>
+
+**Example:**
+
+```go
+entry := logger.Entry("request_id", "abc123", "user_id", "user456")
+entry.Info("Processing request")
+```
+
+## Noop Logger
+
+### NewNoop
+
+```go
+func NewNoop(opts ...Option) *Noop
+```
+
+Creates a no-operation logger that discards all log output. Useful for testing.
+
+<ParamField path="opts" type="...Option">
+  Optional configuration functions (currently unused)
+</ParamField>
+
+<ResponseField name="Noop" type="*Noop">
+  A no-operation logger instance
+</ResponseField>
+
+**Example:**
+
+```go
+// In tests
+logger := log.NewNoop()
+
+// All logging is silently discarded
+logger.Info("This won't be logged")
+logger.Error("Neither will this")
+```
+
+## Usage Examples
+
+### Basic Logging with Zap
+
+```go
+package main
+
+import (
+    "github.com/raystack/salt/log"
+    "go.uber.org/zap"
+)
+
+func main() {
+    // Create logger with custom config
+    zapConfig := zap.NewProductionConfig()
+    zapConfig.Level.SetLevel(zap.DebugLevel)
+    
+    logger := log.NewZap(
+        log.ZapWithConfig(zapConfig),
+    )
+    
+    logger.Info("application started",
+        "version", "1.0.0",
+        "environment", "production",
+    )
+    
+    logger.Debug("detailed information",
+        "component", "database",
+        "connections", 10,
+    )
+}
+```
+
+### Context-based Logging
+
+```go
+package main
+
+import (
+    "context"
+    "net/http"
+    
+    "github.com/raystack/salt/log"
+    "go.uber.org/zap"
+)
+
+func main() {
+    logger := log.NewZap()
+    
+    http.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
+        // Add logger to context
+        ctx := logger.NewContext(r.Context())
+        
+        // Add request-specific fields
+        ctx = log.ZapContextWithFields(ctx,
+            zap.String("request_id", generateRequestID()),
+            zap.String("method", r.Method),
+            zap.String("path", r.URL.Path),
+        )
+        
+        // Pass context to handler
+        handleRequest(ctx, w, r)
+    })
+}
+
+func handleRequest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+    // Retrieve logger from context
+    logger := log.ZapFromContext(ctx)
+    
+    // All logs automatically include request_id, method, and path
+    logger.Info("processing request")
+    logger.Debug("validating input")
+    logger.Info("request completed", "status", 200)
+}
+```
+
+### Logrus with Custom Formatter
+
+```go
+package main
+
+import (
+    "os"
+    
+    "github.com/raystack/salt/log"
+    "github.com/sirupsen/logrus"
+)
+
+func main() {
+    logger := log.NewLogrus(
+        log.LogrusWithLevel("info"),
+        log.LogrusWithWriter(os.Stdout),
+        log.LogrusWithFormatter(&logrus.JSONFormatter{
+            PrettyPrint: true,
+        }),
+    )
+    
+    logger.Info("user logged in",
+        "user_id", "123",
+        "ip_address", "192.168.1.1",
+        "timestamp", time.Now(),
+    )
+}
+```
+
+### Testing with Noop Logger
+
+```go
+package mypackage
+
+import (
+    "testing"
+    
+    "github.com/raystack/salt/log"
+)
+
+func TestMyFunction(t *testing.T) {
+    // Use noop logger in tests to avoid cluttering output
+    logger := log.NewNoop()
+    
+    service := NewService(logger)
+    
+    // Test your code without log output
+    result := service.DoSomething()
+    
+    if result != expected {
+        t.Errorf("Expected %v, got %v", expected, result)
+    }
+}
+```
+
+### Switching Loggers
+
+```go
+package main
+
+import (
+    "os"
+    
+    "github.com/raystack/salt/log"
+)
+
+func createLogger(backend string) log.Logger {
+    switch backend {
+    case "zap":
+        return log.NewZap()
+    case "logrus":
+        return log.NewLogrus(
+            log.LogrusWithLevel("info"),
+        )
+    case "noop":
+        return log.NewNoop()
+    default:
+        return log.NewZap()
+    }
+}
+
+func main() {
+    // Choose logger based on environment
+    logBackend := os.Getenv("LOG_BACKEND")
+    logger := createLogger(logBackend)
+    
+    logger.Info("using logger backend", "backend", logBackend)
+}
+```
+
+## Best Practices
+
+### Structured Logging
+
+Always use key-value pairs for structured logging:
+
+```go
+// Good - structured with context
+logger.Info("user registered",
+    "user_id", userID,
+    "email", email,
+    "timestamp", time.Now(),
+)
+
+// Avoid - unstructured message
+logger.Info(fmt.Sprintf("User %s registered with email %s", userID, email))
+```
+
+### Log Levels
+
+Use appropriate log levels:
+
+- **Debug**: Detailed diagnostic information for development
+- **Info**: General informational messages about application flow
+- **Warn**: Warning messages for recoverable issues
+- **Error**: Error messages for failures that don't crash the application
+- **Fatal**: Critical errors that require application termination
+
+### Context Propagation
+
+Pass logger through context for request-scoped logging:
+
+```go
+func (s *Service) ProcessRequest(ctx context.Context, req *Request) error {
+    logger := log.ZapFromContext(ctx)
+    logger.Info("processing request", "request_id", req.ID)
+    
+    // Pass context to other functions
+    return s.repository.Save(ctx, req)
+}
+```
+
+### Performance
+
+For high-performance applications, prefer Zap over Logrus:
+
+```go
+// Zap is optimized for performance
+logger := log.NewZap(
+    log.ZapWithConfig(zap.NewProductionConfig()),
+)
+```
+
+### Testing
+
+Use Noop logger in unit tests to avoid log clutter:
+
+```go
+func TestService(t *testing.T) {
+    logger := log.NewNoop()
+    service := NewService(logger)
+    // Test without log output
+}
+```

@@ -1,0 +1,513 @@
+---
+title: JSON Diff Package
+description: Intelligent JSON comparison and change tracking utilities
+icon: code-compare
+---
+
+The `jsondiff` package provides utilities for comparing JSON documents and generating detailed change reports. It's perfect for audit logs, version control, and change tracking.
+
+## Features
+
+- **Deep Comparison**: Recursively compares nested JSON structures
+- **Change Types**: Identifies additions, removals, and modifications
+- **Path Tracking**: Provides full JSON path for each change
+- **Type Detection**: Tracks value types (string, number, boolean, array, object)
+- **Sorted Output**: Changes sorted by path for consistency
+- **Value Formatting**: Human-readable value formatting
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/jsondiff
+```
+
+## Quick Start
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+    
+    "github.com/raystack/salt/jsondiff"
+)
+
+func main() {
+    json1 := `{
+        "name": "Alice",
+        "age": 30,
+        "city": "New York"
+    }`
+    
+    json2 := `{
+        "name": "Alice",
+        "age": 31,
+        "city": "San Francisco",
+        "email": "alice@example.com"
+    }`
+    
+    differ := jsondiff.NewJSONDiffer()
+    diffs, err := differ.Compare(json1, json2)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    for _, diff := range diffs {
+        fmt.Printf("%s: %s -> %s\n",
+            diff.FullPath,
+            *diff.FromValue,
+            *diff.ToValue,
+        )
+    }
+}
+```
+
+**Output:**
+```
+/age: 30 -> 31
+/city: New York -> San Francisco
+/email: null -> alice@example.com
+```
+
+## Core Types
+
+### JSONDiffer
+
+```go
+type JSONDiffer struct {}
+
+func NewJSONDiffer() *JSONDiffer
+```
+
+The main differ instance for comparing JSON documents.
+
+### DiffEntry
+
+```go
+type DiffEntry struct {
+    FieldName  string  `json:"field_name"`     // Name of the changed field
+    ChangeType string  `json:"change_type"`    // "added", "removed", or "modified"
+    FromValue  *string `json:"from_value,omitempty"`  // Original value
+    ToValue    *string `json:"to_value,omitempty"`    // New value
+    FullPath   string  `json:"full_path"`      // Full JSON path (e.g., "/user/address/city")
+    ValueType  string  `json:"value_type"`     // Type: "string", "number", "boolean", "array", "object", "null"
+}
+```
+
+Represents a single change between two JSON documents.
+
+## Methods
+
+### Compare
+
+```go
+func (jd *JSONDiffer) Compare(json1, json2 string) ([]DiffEntry, error)
+```
+
+Compares two JSON strings and returns a list of differences.
+
+**Example:**
+
+```go
+differ := jsondiff.NewJSONDiffer()
+diffs, err := differ.Compare(originalJSON, updatedJSON)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Found %d changes\n", len(diffs))
+```
+
+## Change Types
+
+### Added
+
+Field exists in json2 but not in json1:
+
+```go
+json1 := `{"name": "Alice"}`
+json2 := `{"name": "Alice", "email": "alice@example.com"}`
+
+// Result:
+// DiffEntry{
+//     FieldName: "email",
+//     ChangeType: "added",
+//     FromValue: nil,
+//     ToValue: "alice@example.com",
+//     FullPath: "/email",
+//     ValueType: "string",
+// }
+```
+
+### Removed
+
+Field exists in json1 but not in json2:
+
+```go
+json1 := `{"name": "Alice", "age": 30}`
+json2 := `{"name": "Alice"}`
+
+// Result:
+// DiffEntry{
+//     FieldName: "age",
+//     ChangeType: "removed",
+//     FromValue: "30",
+//     ToValue: nil,
+//     FullPath: "/age",
+//     ValueType: "number",
+// }
+```
+
+### Modified
+
+Field exists in both but with different values:
+
+```go
+json1 := `{"status": "pending"}`
+json2 := `{"status": "completed"}`
+
+// Result:
+// DiffEntry{
+//     FieldName: "status",
+//     ChangeType: "modified",
+//     FromValue: "pending",
+//     ToValue: "completed",
+//     FullPath: "/status",
+//     ValueType: "string",
+// }
+```
+
+## Nested Objects
+
+The differ handles nested objects and provides full paths:
+
+```go
+json1 := `{
+    "user": {
+        "name": "Alice",
+        "address": {
+            "city": "New York",
+            "zip": "10001"
+        }
+    }
+}`
+
+json2 := `{
+    "user": {
+        "name": "Alice",
+        "address": {
+            "city": "San Francisco",
+            "zip": "94102",
+            "country": "USA"
+        }
+    }
+}`
+
+differ := jsondiff.NewJSONDiffer()
+diffs, _ := differ.Compare(json1, json2)
+
+// Results:
+// 1. FullPath: "/user/address/city"
+//    ChangeType: "modified"
+//    FromValue: "New York" -> ToValue: "San Francisco"
+//
+// 2. FullPath: "/user/address/zip"
+//    ChangeType: "modified"
+//    FromValue: "10001" -> ToValue: "94102"
+//
+// 3. FullPath: "/user/address/country"
+//    ChangeType: "added"
+//    ToValue: "USA"
+```
+
+## Arrays
+
+Arrays are compared as a whole (not element-by-element):
+
+```go
+json1 := `{"tags": ["golang", "backend"]}`
+json2 := `{"tags": ["golang", "backend", "api"]}`
+
+// Result:
+// DiffEntry{
+//     FieldName: "tags",
+//     ChangeType: "modified",
+//     FromValue: '["golang","backend"]',
+//     ToValue: '["golang","backend","api"]',
+//     FullPath: "/tags",
+//     ValueType: "array",
+// }
+```
+
+## Value Types
+
+The differ identifies and tracks value types:
+
+- `string`: Text values
+- `number`: Integers and floats
+- `boolean`: true/false
+- `array`: JSON arrays
+- `object`: Nested JSON objects
+- `null`: null values
+
+```go
+json1 := `{
+    "name": "Alice",
+    "age": 30,
+    "active": true,
+    "tags": ["admin"],
+    "metadata": {"role": "admin"},
+    "deleted": null
+}`
+
+// Each diff entry will have the appropriate ValueType
+```
+
+## Complete Example: Audit System
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+    "time"
+    
+    "github.com/raystack/salt/jsondiff"
+)
+
+type AuditLog struct {
+    Timestamp time.Time              `json:"timestamp"`
+    UserID    string                 `json:"user_id"`
+    Action    string                 `json:"action"`
+    Resource  string                 `json:"resource"`
+    Changes   []jsondiff.DiffEntry   `json:"changes"`
+}
+
+type User struct {
+    ID       string `json:"id"`
+    Name     string `json:"name"`
+    Email    string `json:"email"`
+    Role     string `json:"role"`
+    IsActive bool   `json:"is_active"`
+}
+
+func main() {
+    // Original user state
+    oldUser := User{
+        ID:       "user-123",
+        Name:     "Alice Johnson",
+        Email:    "alice@example.com",
+        Role:     "user",
+        IsActive: true,
+    }
+    
+    // Updated user state
+    newUser := User{
+        ID:       "user-123",
+        Name:     "Alice Johnson",
+        Email:    "alice.johnson@example.com",
+        Role:     "admin",
+        IsActive: true,
+    }
+    
+    // Convert to JSON
+    oldJSON, _ := json.Marshal(oldUser)
+    newJSON, _ := json.Marshal(newUser)
+    
+    // Compare
+    differ := jsondiff.NewJSONDiffer()
+    diffs, err := differ.Compare(string(oldJSON), string(newJSON))
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Create audit log
+    auditLog := AuditLog{
+        Timestamp: time.Now(),
+        UserID:    "admin-456",
+        Action:    "user.update",
+        Resource:  oldUser.ID,
+        Changes:   diffs,
+    }
+    
+    // Save or display audit log
+    auditJSON, _ := json.MarshalIndent(auditLog, "", "  ")
+    fmt.Println(string(auditJSON))
+    
+    // Display changes in human-readable format
+    fmt.Println("\nChanges:")
+    for _, diff := range diffs {
+        displayChange(diff)
+    }
+}
+
+func displayChange(diff jsondiff.DiffEntry) {
+    switch diff.ChangeType {
+    case "added":
+        fmt.Printf("+ %s: %s\n", diff.FieldName, *diff.ToValue)
+    case "removed":
+        fmt.Printf("- %s: %s\n", diff.FieldName, *diff.FromValue)
+    case "modified":
+        fmt.Printf("~ %s: %s -> %s\n", diff.FieldName, *diff.FromValue, *diff.ToValue)
+    }
+}
+```
+
+**Output:**
+```json
+{
+  "timestamp": "2026-03-04T10:30:45Z",
+  "user_id": "admin-456",
+  "action": "user.update",
+  "resource": "user-123",
+  "changes": [
+    {
+      "field_name": "email",
+      "change_type": "modified",
+      "from_value": "alice@example.com",
+      "to_value": "alice.johnson@example.com",
+      "full_path": "/email",
+      "value_type": "string"
+    },
+    {
+      "field_name": "role",
+      "change_type": "modified",
+      "from_value": "user",
+      "to_value": "admin",
+      "full_path": "/role",
+      "value_type": "string"
+    }
+  ]
+}
+
+Changes:
+~ email: alice@example.com -> alice.johnson@example.com
+~ role: user -> admin
+```
+
+## API Version Comparison
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/raystack/salt/jsondiff"
+)
+
+func compareAPIResponses(v1Response, v2Response string) {
+    differ := jsondiff.NewJSONDiffer()
+    diffs, err := differ.Compare(v1Response, v2Response)
+    if err != nil {
+        panic(err)
+    }
+    
+    if len(diffs) == 0 {
+        fmt.Println("API responses are identical")
+        return
+    }
+    
+    fmt.Println("API Breaking Changes:")
+    for _, diff := range diffs {
+        if diff.ChangeType == "removed" {
+            fmt.Printf("BREAKING: Field %s was removed\n", diff.FullPath)
+        } else if diff.ChangeType == "modified" && diff.ValueType != *diff.FromValue {
+            fmt.Printf("BREAKING: Field %s type changed\n", diff.FullPath)
+        }
+    }
+    
+    fmt.Println("\nAPI Additions:")
+    for _, diff := range diffs {
+        if diff.ChangeType == "added" {
+            fmt.Printf("+   Field %s added\n", diff.FullPath)
+        }
+    }
+}
+```
+
+## Configuration Diff
+
+```go
+func compareConfigurations(oldConfig, newConfig string) ([]jsondiff.DiffEntry, error) {
+    differ := jsondiff.NewJSONDiffer()
+    return differ.Compare(oldConfig, newConfig)
+}
+
+func main() {
+    oldConfig := `{
+        "database": {
+            "host": "localhost",
+            "port": 5432,
+            "max_connections": 10
+        }
+    }`
+    
+    newConfig := `{
+        "database": {
+            "host": "db.example.com",
+            "port": 5432,
+            "max_connections": 25,
+            "ssl_enabled": true
+        }
+    }`
+    
+    diffs, _ := compareConfigurations(oldConfig, newConfig)
+    
+    fmt.Println("Configuration Changes:")
+    for _, diff := range diffs {
+        if diff.ChangeType == "modified" {
+            fmt.Printf("Changed %s: %s -> %s\n",
+                diff.FullPath,
+                *diff.FromValue,
+                *diff.ToValue,
+            )
+        } else if diff.ChangeType == "added" {
+            fmt.Printf("Added %s: %s\n", diff.FullPath, *diff.ToValue)
+        }
+    }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Store Audit Logs in Database">
+    Save diff entries for complete audit trails:
+    ```go
+    diffs, _ := differ.Compare(oldJSON, newJSON)
+    for _, diff := range diffs {
+        saveAuditLog(diff)
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Filter Sensitive Fields">
+    Remove sensitive information before comparison:
+    ```go
+    // Remove password field before comparing
+    user["password"] = "[REDACTED]"
+    ```
+  </Accordion>
+  
+  <Accordion title="Use for Version Control">
+    Track document versions with timestamps:
+    ```go
+    type Version struct {
+        Timestamp time.Time
+        Changes   []jsondiff.DiffEntry
+        Author    string
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Large Objects Carefully">
+    For very large JSON documents, consider:
+    - Comparing specific sections
+    - Limiting diff output size
+    - Using streaming comparison
+  </Accordion>
+</AccordionGroup>

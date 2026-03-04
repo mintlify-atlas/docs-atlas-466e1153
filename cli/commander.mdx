@@ -1,0 +1,385 @@
+---
+title: Commander
+description: Cobra CLI manager with custom help, reference docs, and hooks
+---
+
+The `commander` package provides a powerful manager for building Cobra-based CLI applications with enhanced features like custom help formatting, reference documentation, shell completion, and command hooks.
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/cli/commander
+```
+
+## Core Types
+
+### Manager
+
+Manages and configures features for a CLI tool.
+
+```go
+type Manager struct {
+    RootCmd    *cobra.Command
+    Help       bool           // Enable custom help
+    Reference  bool           // Enable reference command
+    Completion bool           // Enable shell completion
+    Config     bool           // Enable configuration management
+    Docs       bool           // Enable markdown documentation
+    Hooks      []HookBehavior // Hook behaviors to apply
+    Topics     []HelpTopic    // Help topics with details
+}
+```
+
+### HelpTopic
+
+Defines a help topic with its details.
+
+```go
+type HelpTopic struct {
+    Name    string
+    Short   string
+    Long    string
+    Example string
+}
+```
+
+### HookBehavior
+
+Defines a behavior applied to commands.
+
+```go
+type HookBehavior struct {
+    Name     string                   // Name of the hook
+    Behavior func(cmd *cobra.Command) // Function to apply
+}
+```
+
+## Quick Start
+
+### Basic Setup
+
+Create a CLI manager with default features:
+
+```go
+package main
+
+import (
+    "github.com/raystack/salt/cli/commander"
+    "github.com/spf13/cobra"
+)
+
+func main() {
+    rootCmd := &cobra.Command{
+        Use:   "mycli",
+        Short: "My awesome CLI tool",
+    }
+
+    // Create manager with defaults
+    manager := commander.New(rootCmd)
+    
+    // Initialize features
+    manager.Init()
+    
+    // Execute CLI
+    if err := rootCmd.Execute(); err != nil {
+        // Handle error
+    }
+}
+```
+
+### Custom Configuration
+
+Configure specific features:
+
+```go
+manager := commander.New(
+    rootCmd,
+    commander.WithTopics([]commander.HelpTopic{
+        {
+            Name:    "environment",
+            Short:   "Learn about environment variables",
+            Long:    "Detailed info about environment configuration...",
+            Example: "API_KEY=xxx mycli command",
+        },
+    }),
+    commander.WithHooks([]commander.HookBehavior{
+        {
+            Name: "auth",
+            Behavior: func(cmd *cobra.Command) {
+                // Add authentication logic before command runs
+                cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+                    return authenticate()
+                }
+            },
+        },
+    }),
+)
+
+// Disable certain features
+manager.Reference = false
+manager.Docs = true
+
+manager.Init()
+```
+
+## Features
+
+### Custom Help
+
+Provides organized help output with command grouping:
+
+```go
+manager := commander.New(rootCmd)
+manager.Help = true // Enabled by default
+manager.Init()
+```
+
+Commands can be organized into groups using annotations:
+
+```go
+cmd := &cobra.Command{
+    Use:   "deploy",
+    Short: "Deploy your application",
+    Annotations: map[string]string{
+        "group": "core",
+    },
+}
+
+rootCmd.AddCommand(cmd)
+```
+
+Supported annotation keys:
+- `group`: "core", "help", or custom group name
+- `help:arguments`: Additional arguments documentation
+- `help:environment`: Environment variables documentation
+- `help:learn`: Learning resources
+- `help:feedback`: Feedback information
+
+### Reference Command
+
+Automatically generates comprehensive markdown reference:
+
+```go
+manager.Reference = true
+manager.Init()
+```
+
+Users can view the reference:
+
+```bash
+mycli reference           # View in terminal with colors
+mycli reference --plain   # View as plain markdown
+```
+
+### Shell Completion
+
+Generate completion scripts for various shells:
+
+```go
+manager.Completion = true
+manager.Init()
+```
+
+Users can generate completion scripts:
+
+```bash
+mycli completion bash
+mycli completion zsh
+mycli completion fish
+mycli completion powershell
+```
+
+### Help Topics
+
+Add dedicated help topics for complex subjects:
+
+```go
+topics := []commander.HelpTopic{
+    {
+        Name:  "config",
+        Short: "Learn about configuration",
+        Long: `Configuration can be managed through:
+  - Config files: ~/.mycli/config.yaml
+  - Environment variables: MYCLI_*
+  - Command flags: --config`,
+        Example: `# View current config
+  mycli config view
+  
+  # Set a value
+  mycli config set key value`,
+    },
+}
+
+manager := commander.New(
+    rootCmd,
+    commander.WithTopics(topics),
+)
+manager.Init()
+```
+
+### Command Hooks
+
+Apply behaviors to commands with `client:true` annotation:
+
+```go
+hooks := []commander.HookBehavior{
+    {
+        Name: "setup",
+        Behavior: func(cmd *cobra.Command) {
+            // Add setup logic
+            original := cmd.PreRunE
+            cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+                if err := setupClient(); err != nil {
+                    return err
+                }
+                if original != nil {
+                    return original(cmd, args)
+                }
+                return nil
+            }
+        },
+    },
+}
+
+manager := commander.New(
+    rootCmd,
+    commander.WithHooks(hooks),
+)
+
+// Commands with this annotation will have hooks applied
+cmd := &cobra.Command{
+    Use: "api-call",
+    Annotations: map[string]string{
+        "client": "true",
+    },
+}
+```
+
+### Markdown Documentation
+
+Generate markdown files for all commands:
+
+```go
+manager.Docs = true
+manager.Init()
+```
+
+This generates markdown documentation in the `./docs` directory.
+
+## Error Handling
+
+### Command Error Detection
+
+Distinguish between user errors and program errors:
+
+```go
+if err := rootCmd.Execute(); err != nil {
+    if commander.IsCommandErr(err) {
+        // User made a mistake (wrong command/flag)
+        // No need to log, Cobra already displayed the error
+        os.Exit(1)
+    } else {
+        // Program error - log and report
+        log.Error(err)
+        os.Exit(1)
+    }
+}
+```
+
+`IsCommandErr` detects errors like:
+- Unknown command
+- Unknown flag
+- Unknown shorthand flag
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/raystack/salt/cli/commander"
+    "github.com/spf13/cobra"
+)
+
+func main() {
+    // Create root command
+    rootCmd := &cobra.Command{
+        Use:   "mycli",
+        Short: "A modern CLI application",
+        Long:  `A CLI tool with rich features including help topics and hooks.`,
+    }
+
+    // Add commands
+    deployCmd := &cobra.Command{
+        Use:   "deploy",
+        Short: "Deploy your application",
+        Annotations: map[string]string{
+            "group":  "core",
+            "client": "true",
+        },
+        RunE: func(cmd *cobra.Command, args []string) error {
+            return deploy()
+        },
+    }
+    rootCmd.AddCommand(deployCmd)
+
+    // Create manager with features
+    manager := commander.New(
+        rootCmd,
+        commander.WithTopics([]commander.HelpTopic{
+            {
+                Name:    "environment",
+                Short:   "Environment variables reference",
+                Long:    "Available environment variables:\n  API_KEY - Your API key\n  DEBUG - Enable debug mode",
+                Example: "API_KEY=xxx DEBUG=true mycli deploy",
+            },
+        }),
+        commander.WithHooks([]commander.HookBehavior{
+            {
+                Name: "client-setup",
+                Behavior: func(cmd *cobra.Command) {
+                    cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+                        fmt.Println("Setting up client...")
+                        return nil
+                    }
+                },
+            },
+        }),
+    )
+
+    // Initialize all features
+    manager.Init()
+
+    // Execute
+    if err := rootCmd.Execute(); err != nil {
+        if commander.IsCommandErr(err) {
+            os.Exit(1)
+        }
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        os.Exit(1)
+    }
+}
+
+func deploy() error {
+    fmt.Println("Deploying application...")
+    return nil
+}
+```
+
+## Best Practices
+
+1. **Use command groups** - Organize commands with the `group` annotation for better help output
+2. **Add help annotations** - Enhance documentation with `help:*` annotations
+3. **Apply hooks selectively** - Use `client:true` annotation only for commands that need it
+4. **Enable defaults** - Keep Help, Reference, and Completion enabled unless you have a reason not to
+5. **Create help topics** - Document complex concepts as separate help topics
+6. **Handle errors properly** - Use `IsCommandErr` to distinguish user errors from program errors
+
+## Related
+
+- [Printer](/cli/printer) - Terminal output utilities
+- [Prompter](/cli/prompter) - Interactive prompts
+- [Terminator](/cli/terminator) - Terminal utilities

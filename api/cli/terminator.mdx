@@ -1,0 +1,547 @@
+---
+title: Terminator
+description: Terminal environment detection and utilities for TTY, pagers, browsers, and CI detection
+icon: window
+---
+
+## Overview
+
+Terminator provides utilities for detecting and interacting with terminal environments, including TTY detection, pager management, browser launching, and CI/CD environment detection.
+
+## Terminal Detection
+
+### IsTTY
+
+Checks if the current output is a TTY (terminal) or Cygwin terminal.
+
+```go
+func IsTTY() bool
+```
+
+<ResponseField name="result" type="bool">
+  True if running in a terminal environment, false if output is redirected or piped
+</ResponseField>
+
+**Use Cases:**
+- Disable colored output when piping to files
+- Disable interactive prompts in non-interactive environments
+- Adjust output formatting based on terminal capabilities
+
+**Example:**
+
+```go
+import "github.com/raystack/salt/cli/terminator"
+
+if terminator.IsTTY() {
+    // Terminal output: use colors and spinners
+    spinner := printer.Spin("Loading")
+    // ...
+    spinner.Stop()
+} else {
+    // Non-terminal: plain text output
+    fmt.Println("Loading...")
+}
+```
+
+### IsColorDisabled
+
+Checks if color output is disabled via the NO_COLOR environment variable.
+
+```go
+func IsColorDisabled() bool
+```
+
+<ResponseField name="result" type="bool">
+  True if NO_COLOR environment variable is set, false otherwise
+</ResponseField>
+
+**Example:**
+
+```go
+if terminator.IsColorDisabled() {
+    // Output plain text without ANSI color codes
+    fmt.Println("Status: OK")
+} else {
+    // Use colored output
+    printer.Successln("Status: OK")
+}
+```
+
+**Environment Variable:**
+```bash
+# Disable colors
+export NO_COLOR=1
+
+# Enable colors (default)
+unset NO_COLOR
+```
+
+### IsCI
+
+Checks if the code is running in a Continuous Integration environment.
+
+```go
+func IsCI() bool
+```
+
+<ResponseField name="result" type="bool">
+  True if running in a CI/CD environment, false otherwise
+</ResponseField>
+
+**Detected CI Environments:**
+- GitHub Actions
+- Travis CI
+- CircleCI
+- GitLab CI
+- Jenkins
+- TeamCity
+- AppVeyor
+- TaskCluster
+- And others (via standard CI environment variables)
+
+**Example:**
+
+```go
+if terminator.IsCI() {
+    // CI environment: disable interactive prompts
+    fmt.Println("Running in CI mode")
+    useDefaults := true
+} else {
+    // Local development: allow interactive prompts
+    prompter := prompter.New()
+    confirmed, _ := prompter.Confirm("Continue?", true)
+}
+```
+
+## Pager Management
+
+Manage pager processes for paginated output (like `less` or `more`).
+
+### Pager Type
+
+```go
+type Pager struct {
+    Out          io.Writer   // Output writer to pager
+    ErrOut       io.Writer   // Error output writer
+    // Private fields...
+}
+```
+
+### NewPager
+
+Creates a new Pager instance with default settings.
+
+```go
+func NewPager() *Pager
+```
+
+<ResponseField name="pager" type="*Pager">
+  Configured Pager instance (uses PAGER env var or defaults to "more")
+</ResponseField>
+
+**Example:**
+
+```go
+pager := terminator.NewPager()
+```
+
+### Set
+
+Updates the pager command.
+
+```go
+func (p *Pager) Set(cmd string)
+```
+
+<ParamField path="cmd" type="string" required>
+  Pager command (e.g., "less", "more", "cat")
+</ParamField>
+
+**Example:**
+
+```go
+pager := terminator.NewPager()
+pager.Set("less -R") // Enable color support in less
+```
+
+### Get
+
+Returns the current pager command.
+
+```go
+func (p *Pager) Get() string
+```
+
+<ResponseField name="command" type="string">
+  Current pager command
+</ResponseField>
+
+### Start
+
+Starts the pager process to display output.
+
+```go
+func (p *Pager) Start() error
+```
+
+<ResponseField name="error" type="error">
+  Error if pager fails to start or command is invalid
+</ResponseField>
+
+**Behavior:**
+- Does nothing if pager command is "cat" or empty
+- Sets LESS=FRX environment variable if not already set
+- Sets LV=-c environment variable if not already set
+- Redirects output to pager's stdin
+
+**Example:**
+
+```go
+pager := terminator.NewPager()
+if err := pager.Start(); err != nil {
+    log.Fatal(err)
+}
+
+// Write to pager
+fmt.Fprintln(pager.Out, "Line 1")
+fmt.Fprintln(pager.Out, "Line 2")
+// ... many more lines
+
+// Clean up
+pager.Stop()
+```
+
+### Stop
+
+Terminates the running pager process and cleans up resources.
+
+```go
+func (p *Pager) Stop()
+```
+
+**Example:**
+
+```go
+defer pager.Stop() // Ensure cleanup
+
+// Use pager...
+```
+
+### Complete Pager Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/raystack/salt/cli/terminator"
+)
+
+func main() {
+    // Create and start pager
+    pager := terminator.NewPager()
+    if err := pager.Start(); err != nil {
+        log.Fatal(err)
+    }
+    defer pager.Stop()
+
+    // Generate long output
+    for i := 1; i <= 100; i++ {
+        fmt.Fprintf(pager.Out, "Line %d: Some content here\n", i)
+    }
+}
+```
+
+### ErrClosedPagerPipe
+
+Error type returned when writing to a closed pager pipe (user quit pager).
+
+```go
+type ErrClosedPagerPipe struct {
+    error
+}
+```
+
+**Handling:**
+
+```go
+_, err := fmt.Fprintln(pager.Out, "Content")
+if err != nil {
+    var closedPipe *terminator.ErrClosedPagerPipe
+    if errors.As(err, &closedPipe) {
+        // User closed pager, exit gracefully
+        return nil
+    }
+    return err
+}
+```
+
+## Browser Management
+
+### OpenBrowser
+
+Opens the default web browser at a specified URL.
+
+```go
+func OpenBrowser(goos, url string) *exec.Cmd
+```
+
+<ParamField path="goos" type="string" required>
+  Operating system name ("darwin", "windows", "linux")
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  URL to open in the browser
+</ParamField>
+
+<ResponseField name="cmd" type="*exec.Cmd">
+  Configured command (must call Run() or Start() to execute)
+</ResponseField>
+
+**Platform Commands:**
+- macOS: `open <url>`
+- Windows: `cmd /c start <url>`
+- Linux: `xdg-open <url>` (or `wslview` for WSL)
+
+**Example:**
+
+```go
+import (
+    "runtime"
+    
+    "github.com/raystack/salt/cli/terminator"
+)
+
+func openDocs() error {
+    url := "https://docs.example.com"
+    cmd := terminator.OpenBrowser(runtime.GOOS, url)
+    return cmd.Start()
+}
+```
+
+**With TTY Check:**
+
+```go
+if terminator.IsTTY() {
+    fmt.Println("Opening browser...")
+    cmd := terminator.OpenBrowser(runtime.GOOS, url)
+    if err := cmd.Start(); err != nil {
+        fmt.Printf("Failed to open browser: %v\n", err)
+        fmt.Printf("Visit: %s\n", url)
+    }
+} else {
+    fmt.Printf("Visit: %s\n", url)
+}
+```
+
+**Important:** OpenBrowser will panic if called without a TTY. Always check with IsTTY() first.
+
+## Homebrew Detection
+
+### IsUnderHomebrew
+
+Checks if a binary path is managed by Homebrew.
+
+```go
+func IsUnderHomebrew(path string) bool
+```
+
+<ParamField path="path" type="string" required>
+  Full path to the binary
+</ParamField>
+
+<ResponseField name="result" type="bool">
+  True if binary is in Homebrew's bin directory, false otherwise
+</ResponseField>
+
+**Example:**
+
+```go
+import "os"
+
+exePath, _ := os.Executable()
+if terminator.IsUnderHomebrew(exePath) {
+    fmt.Println("Installed via Homebrew")
+    fmt.Println("Update with: brew upgrade mycli")
+}
+```
+
+### HasHomebrew
+
+Checks if Homebrew is installed on the system.
+
+```go
+func HasHomebrew() bool
+```
+
+<ResponseField name="result" type="bool">
+  True if Homebrew is available, false otherwise
+</ResponseField>
+
+**Example:**
+
+```go
+if terminator.HasHomebrew() {
+    fmt.Println("Homebrew detected")
+    fmt.Println("Install with: brew install mycli")
+} else {
+    fmt.Println("Download from: https://example.com/install")
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Check TTY Before Interactive Features">
+    Always verify TTY before using interactive features:
+    
+    ```go
+    if terminator.IsTTY() {
+        // Use interactive features
+        spinner := printer.Spin("Loading")
+        defer spinner.Stop()
+    } else {
+        // Use simple output
+        fmt.Println("Loading...")
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Respect NO_COLOR">
+    Check color preferences before adding ANSI codes:
+    
+    ```go
+    useColor := terminator.IsTTY() && !terminator.IsColorDisabled()
+    
+    if useColor {
+        printer.Successln("Done")
+    } else {
+        fmt.Println("Done")
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Handle CI Environments">
+    Adjust behavior for CI/CD pipelines:
+    
+    ```go
+    if terminator.IsCI() {
+        // CI: Non-interactive, verbose output
+        fmt.Println("Step 1: Building...")
+        fmt.Println("Step 2: Testing...")
+    } else {
+        // Local: Interactive with progress bars
+        bar := printer.Progress(100, "Building")
+        // ...
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Graceful Pager Errors">
+    Handle pager pipe closures gracefully:
+    
+    ```go
+    for i := 0; i < 1000; i++ {
+        _, err := fmt.Fprintf(pager.Out, "Line %d\n", i)
+        if err != nil {
+            var closedPipe *terminator.ErrClosedPagerPipe
+            if errors.As(err, &closedPipe) {
+                // User quit pager early
+                break
+            }
+            return err
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "os"
+    "runtime"
+
+    "github.com/raystack/salt/cli/printer"
+    "github.com/raystack/salt/cli/prompter"
+    "github.com/raystack/salt/cli/terminator"
+)
+
+func main() {
+    // Detect environment
+    isTTY := terminator.IsTTY()
+    isCI := terminator.IsCI()
+    colorDisabled := terminator.IsColorDisabled()
+
+    fmt.Printf("Environment:\n")
+    fmt.Printf("  TTY: %v\n", isTTY)
+    fmt.Printf("  CI: %v\n", isCI)
+    fmt.Printf("  Color: %v\n", !colorDisabled)
+    fmt.Println()
+
+    // Adjust behavior based on environment
+    if isCI {
+        runCIMode()
+    } else if isTTY {
+        runInteractiveMode()
+    } else {
+        runBatchMode()
+    }
+
+    // Show docs option
+    if isTTY {
+        showDocsOption()
+    }
+}
+
+func runCIMode() {
+    fmt.Println("Running in CI mode...")
+    fmt.Println("Using default configuration")
+    // Non-interactive execution
+}
+
+func runInteractiveMode() {
+    fmt.Println("Running in interactive mode...")
+    
+    p := prompter.New()
+    confirmed, err := p.Confirm("Continue?", true)
+    if err != nil || !confirmed {
+        fmt.Println("Cancelled")
+        return
+    }
+    
+    // Show progress
+    spinner := printer.Spin("Processing")
+    // ... do work
+    spinner.Stop()
+    printer.Successln("Complete")
+}
+
+func runBatchMode() {
+    fmt.Println("Running in batch mode...")
+    fmt.Println("Output can be piped or redirected")
+    // Simple text output
+}
+
+func showDocsOption() {
+    p := prompter.New()
+    openDocs, err := p.Confirm("Open documentation?", false)
+    if err != nil || !openDocs {
+        return
+    }
+
+    url := "https://docs.example.com"
+    cmd := terminator.OpenBrowser(runtime.GOOS, url)
+    if err := cmd.Start(); err != nil {
+        fmt.Printf("Failed to open browser: %v\n", err)
+        fmt.Printf("Visit: %s\n", url)
+    }
+}
+```

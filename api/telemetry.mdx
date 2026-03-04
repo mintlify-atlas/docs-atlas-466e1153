@@ -1,0 +1,504 @@
+---
+title: 'Telemetry Package'
+description: 'OpenTelemetry integration for distributed tracing and metrics'
+---
+
+The `telemetry` package provides OpenTelemetry integration for distributed tracing and metrics collection, with specialized instrumentation for gRPC and HTTP clients.
+
+## Core Functions
+
+### Init
+
+```go
+func Init(ctx context.Context, cfg Config, logger log.Logger) (cleanUp func(), err error)
+```
+
+Initializes OpenTelemetry instrumentation with tracing and metrics exporters. Returns a cleanup function that must be called before application shutdown to flush remaining telemetry data.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for initialization. Used for setting up exporters.
+</ParamField>
+
+<ParamField path="cfg" type="Config" required>
+  Telemetry configuration including OpenTelemetry settings.
+</ParamField>
+
+<ParamField path="logger" type="log.Logger" required>
+  Logger instance for telemetry subsystem messages.
+</ParamField>
+
+<ResponseField name="cleanUp" type="func()">
+  Cleanup function that should be deferred to ensure proper shutdown of telemetry providers.
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Returns an error if telemetry initialization fails.
+</ResponseField>
+
+#### Example
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    
+    "github.com/raystack/salt/log"
+    "github.com/raystack/salt/telemetry"
+)
+
+func main() {
+    ctx := context.Background()
+    logger := log.NewLogrus()
+    
+    cfg := telemetry.Config{
+        AppName:    "my-service",
+        AppVersion: "1.0.0",
+        OpenTelemetry: telemetry.OpenTelemetryConfig{
+            Enabled:                true,
+            CollectorAddr:          "localhost:4317",
+            TraceSampleProbability: 1.0,
+        },
+    }
+    
+    cleanup, err := telemetry.Init(ctx, cfg, logger)
+    if err != nil {
+        log.Fatalf("Failed to initialize telemetry: %v", err)
+    }
+    defer cleanup()
+    
+    // Your application code here...
+}
+```
+
+## Configuration
+
+### Config
+
+```go
+type Config struct {
+    AppVersion    string
+    AppName       string
+    OpenTelemetry OpenTelemetryConfig
+}
+```
+
+Top-level telemetry configuration.
+
+<ParamField path="AppVersion" type="string" required>
+  Application version for resource attributes.
+</ParamField>
+
+<ParamField path="AppName" type="string" default="service">
+  Application name for service identification.
+</ParamField>
+
+<ParamField path="OpenTelemetry" type="OpenTelemetryConfig" required>
+  OpenTelemetry-specific configuration.
+</ParamField>
+
+### OpenTelemetryConfig
+
+```go
+type OpenTelemetryConfig struct {
+    Enabled                      bool
+    CollectorAddr                string
+    PeriodicReadInterval         time.Duration
+    TraceSampleProbability       float64
+    VerboseResourceLabelsEnabled bool
+}
+```
+
+OpenTelemetry configuration options.
+
+<ParamField path="Enabled" type="bool" default="false">
+  Enable or disable OpenTelemetry monitoring.
+</ParamField>
+
+<ParamField path="CollectorAddr" type="string" default="localhost:4317">
+  Address of the OpenTelemetry collector (OTLP gRPC endpoint).
+</ParamField>
+
+<ParamField path="PeriodicReadInterval" type="time.Duration" default="1s">
+  Interval for reading and exporting metrics.
+</ParamField>
+
+<ParamField path="TraceSampleProbability" type="float64" default="1">
+  Probability of sampling a trace (0.0 to 1.0). 1.0 means sample all traces.
+</ParamField>
+
+<ParamField path="VerboseResourceLabelsEnabled" type="bool" default="false">
+  Include verbose resource labels (OS, host, process information) in telemetry data.
+</ParamField>
+
+#### Example Configuration (YAML)
+
+```yaml
+app_name: my-service
+app_version: 1.0.0
+open_telemetry:
+  enabled: true
+  collector_addr: otel-collector:4317
+  periodic_read_interval: 1s
+  trace_sample_probability: 0.1
+  verbose_resource_labels_enabled: false
+```
+
+---
+
+## Package: otelgrpc
+
+Provides OpenTelemetry instrumentation for gRPC clients with automatic metrics collection.
+
+### Meter
+
+```go
+type Meter struct {
+    // Contains unexported fields
+}
+```
+
+Instrumentation meter for gRPC clients that tracks request duration, request size, and response size.
+
+### NewMeter
+
+```go
+func NewMeter(hostName string, opts ...Option) Meter
+```
+
+Creates a new gRPC client meter for collecting telemetry.
+
+<ParamField path="hostName" type="string" required>
+  The gRPC server hostname in "host:port" format.
+</ParamField>
+
+<ParamField path="opts" type="...Option">
+  Optional configuration options.
+</ParamField>
+
+<ResponseField name="Meter" type="Meter">
+  Configured meter instance for gRPC instrumentation.
+</ResponseField>
+
+#### Example
+
+```go
+import (
+    "github.com/raystack/salt/telemetry/otelgrpc"
+    "google.golang.org/grpc"
+)
+
+meter := otelgrpc.NewMeter("api.example.com:9090")
+
+conn, err := grpc.Dial(
+    "api.example.com:9090",
+    grpc.WithUnaryInterceptor(meter.UnaryClientInterceptor()),
+    grpc.WithStreamInterceptor(meter.StreamClientInterceptor()),
+)
+```
+
+### Meter Methods
+
+#### UnaryClientInterceptor
+
+```go
+func (m *Meter) UnaryClientInterceptor() grpc.UnaryClientInterceptor
+```
+
+Returns a gRPC unary client interceptor that automatically records metrics for each RPC call.
+
+<ResponseField name="grpc.UnaryClientInterceptor" type="grpc.UnaryClientInterceptor">
+  Interceptor function that can be passed to grpc.Dial via grpc.WithUnaryInterceptor.
+</ResponseField>
+
+#### StreamClientInterceptor
+
+```go
+func (m *Meter) StreamClientInterceptor() grpc.StreamClientInterceptor
+```
+
+Returns a gRPC stream client interceptor that automatically records metrics for streaming calls.
+
+<ResponseField name="grpc.StreamClientInterceptor" type="grpc.StreamClientInterceptor">
+  Interceptor function that can be passed to grpc.Dial via grpc.WithStreamInterceptor.
+</ResponseField>
+
+#### RecordUnary
+
+```go
+func (m *Meter) RecordUnary(ctx context.Context, p UnaryParams)
+```
+
+Manually records metrics for a unary gRPC call.
+
+<ParamField path="ctx" type="context.Context" required>
+  Request context.
+</ParamField>
+
+<ParamField path="p" type="UnaryParams" required>
+  Parameters containing call information (method, request, response, error, timing).
+</ParamField>
+
+#### RecordStream
+
+```go
+func (m *Meter) RecordStream(ctx context.Context, start time.Time, method string, err error)
+```
+
+Manually records metrics for a streaming gRPC call.
+
+<ParamField path="ctx" type="context.Context" required>
+  Request context.
+</ParamField>
+
+<ParamField path="start" type="time.Time" required>
+  Start time of the stream.
+</ParamField>
+
+<ParamField path="method" type="string" required>
+  gRPC method name.
+</ParamField>
+
+<ParamField path="err" type="error">
+  Error if the stream failed.
+</ParamField>
+
+### Utility Functions
+
+#### ParseFullMethod
+
+```go
+func ParseFullMethod(fullMethod string) []attribute.KeyValue
+```
+
+Parses a gRPC full method name into service and method attributes.
+
+<ParamField path="fullMethod" type="string" required>
+  Full gRPC method name in format "/package.Service/Method".
+</ParamField>
+
+<ResponseField name="[]attribute.KeyValue" type="[]attribute.KeyValue">
+  OpenTelemetry attributes for the service and method.
+</ResponseField>
+
+#### ExtractAddress
+
+```go
+func ExtractAddress(addr string) (host, port string)
+```
+
+Splits a host:port address into separate host and port components.
+
+<ParamField path="addr" type="string" required>
+  Address string in "host:port" format.
+</ParamField>
+
+<ResponseField name="host" type="string">
+  The host component.
+</ResponseField>
+
+<ResponseField name="port" type="string">
+  The port component. Defaults to "80" if not specified.
+</ResponseField>
+
+---
+
+## Package: otelhttpclient
+
+Provides OpenTelemetry instrumentation for HTTP clients following OpenTelemetry Semantic Conventions.
+
+### NewHTTPTransport
+
+```go
+func NewHTTPTransport(baseTransport http.RoundTripper) http.RoundTripper
+```
+
+Wraps an HTTP RoundTripper with OpenTelemetry instrumentation that automatically collects metrics for HTTP client requests.
+
+<ParamField path="baseTransport" type="http.RoundTripper" required>
+  Base transport to wrap. If nil, http.DefaultTransport is used.
+</ParamField>
+
+<ResponseField name="http.RoundTripper" type="http.RoundTripper">
+  Instrumented transport that collects telemetry data.
+</ResponseField>
+
+#### Example
+
+```go
+import (
+    "net/http"
+    
+    "github.com/raystack/salt/telemetry/otelhhtpclient"
+)
+
+client := &http.Client{
+    Transport: otelhttpclient.NewHTTPTransport(nil),
+}
+
+resp, err := client.Get("https://api.example.com/users")
+```
+
+#### Metrics Collected
+
+The HTTP transport collects the following metrics according to OpenTelemetry semantic conventions:
+
+- `http.client.duration` - Request duration in milliseconds
+- `http.client.request.size` - Request body size in bytes
+- `http.client.response.size` - Response body size in bytes
+
+### AnnotateRequest
+
+```go
+func AnnotateRequest(req *http.Request, route string) *http.Request
+```
+
+Adds telemetry-related annotations to the request context. Use this to add high-level route information to prevent metric cardinality explosion.
+
+<ParamField path="req" type="*http.Request" required>
+  HTTP request to annotate.
+</ParamField>
+
+<ParamField path="route" type="string" required>
+  Route template (e.g., "/users/:id"). Must be a template, not the actual URL path.
+</ParamField>
+
+<ResponseField name="*http.Request" type="*http.Request">
+  Request with updated context containing the route annotation.
+</ResponseField>
+
+<Warning>
+  Always use route templates (e.g., `/users/:id`) instead of actual paths (e.g., `/users/123`) to prevent high cardinality metrics that could overwhelm your telemetry system.
+</Warning>
+
+#### Example
+
+```go
+req, _ := http.NewRequest("GET", "https://api.example.com/users/123", nil)
+req = otelhttpclient.AnnotateRequest(req, "/users/:id")
+
+resp, err := client.Do(req)
+```
+
+### LabelerFromContext
+
+```go
+func LabelerFromContext(ctx context.Context) (*otelhttp.Labeler, bool)
+```
+
+Retrieves the labeler annotation from the context if it exists.
+
+<ParamField path="ctx" type="context.Context" required>
+  Request context.
+</ParamField>
+
+<ResponseField name="*otelhttp.Labeler" type="*otelhttp.Labeler">
+  The labeler instance.
+</ResponseField>
+
+<ResponseField name="bool" type="bool">
+  True if the labeler was found in the context.
+</ResponseField>
+
+## Best Practices
+
+### Sampling Strategy
+
+Adjust trace sampling based on traffic volume:
+
+```go
+// Production: sample 10% of traces
+TraceSampleProbability: 0.1
+
+// Development: sample all traces
+TraceSampleProbability: 1.0
+```
+
+### Resource Labels
+
+Enable verbose labels only when needed:
+
+```go
+// Production: minimal labels
+VerboseResourceLabelsEnabled: false
+
+// Debugging: full labels
+VerboseResourceLabelsEnabled: true
+```
+
+### HTTP Route Cardinality
+
+Always use route templates:
+
+```go
+// Good: low cardinality
+req = AnnotateRequest(req, "/users/:id")
+req = AnnotateRequest(req, "/orders/:orderId/items/:itemId")
+
+// Bad: high cardinality
+req = AnnotateRequest(req, "/users/12345")
+req = AnnotateRequest(req, fmt.Sprintf("/orders/%s", orderID))
+```
+
+### Graceful Shutdown
+
+Always defer the cleanup function:
+
+```go
+cleanup, err := telemetry.Init(ctx, cfg, logger)
+if err != nil {
+    log.Fatal(err)
+}
+defer cleanup()  // Ensures telemetry data is flushed
+
+// Application code...
+```
+
+### gRPC Client Instrumentation
+
+Add interceptors at connection time:
+
+```go
+meter := otelgrpc.NewMeter("api.example.com:9090")
+
+conn, err := grpc.Dial(
+    target,
+    grpc.WithUnaryInterceptor(meter.UnaryClientInterceptor()),
+    grpc.WithStreamInterceptor(meter.StreamClientInterceptor()),
+)
+```
+
+## Integration with Collectors
+
+The package exports telemetry data via OTLP (OpenTelemetry Protocol) over gRPC. It's compatible with:
+
+- OpenTelemetry Collector
+- Jaeger (with OTLP receiver)
+- Grafana Tempo
+- Any OTLP-compatible backend
+
+### Example Collector Configuration
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  jaeger:
+    endpoint: jaeger:14250
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [jaeger]
+    metrics:
+      receivers: [otlp]
+      exporters: [prometheus]
+```

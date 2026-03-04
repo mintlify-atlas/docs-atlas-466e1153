@@ -1,0 +1,428 @@
+---
+title: Config Package
+description: Flexible configuration management for Go applications
+icon: gear
+---
+
+The `config` package provides a comprehensive configuration management solution that merges settings from multiple sources: configuration files, environment variables, command-line flags, and default values.
+
+## Features
+
+- **Multiple Sources**: Merge config from YAML files, environment variables, and CLI flags
+- **Priority Order**: Command-line flags → Environment variables → Config file → Defaults
+- **Validation**: Built-in struct validation using `go-playground/validator`
+- **Type Safety**: Strongly-typed configuration with struct tags
+- **Dynamic Binding**: Automatic flag binding using reflection
+- **App Config Support**: Platform-specific configuration file paths
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/config
+```
+
+## Quick Start
+
+```go
+package main
+
+import (
+    "log"
+    "github.com/raystack/salt/config"
+    "github.com/spf13/pflag"
+)
+
+type Config struct {
+    Server struct {
+        Port int    `mapstructure:"server.port" default:"8080" validate:"required,min=1"`
+        Host string `mapstructure:"server.host" default:"localhost" validate:"required"`
+    } `mapstructure:"server"`
+    
+    LogLevel string `mapstructure:"log.level" default:"info" validate:"oneof=debug info warn error"`
+}
+
+func main() {
+    loader := config.NewLoader(
+        config.WithFile("./config.yaml"),
+        config.WithEnvPrefix("MYAPP"),
+    )
+    
+    cfg := &Config{}
+    if err := loader.Load(cfg); err != nil {
+        log.Fatalf("Failed to load config: %v", err)
+    }
+    
+    log.Printf("Server will run on %s:%d", cfg.Server.Host, cfg.Server.Port)
+}
+```
+
+## Core Types
+
+### Loader
+
+```go
+type Loader struct {
+    // Internal fields
+}
+```
+
+The main configuration loader that manages reading from multiple sources.
+
+### Option
+
+```go
+type Option func(c *Loader)
+```
+
+Functional option for configuring the Loader.
+
+## Creating a Loader
+
+### NewLoader
+
+```go
+func NewLoader(options ...Option) *Loader
+```
+
+Creates a new configuration loader with the specified options.
+
+**Example:**
+
+```go
+loader := config.NewLoader(
+    config.WithFile("./config.yaml"),
+    config.WithEnvPrefix("MYAPP"),
+)
+```
+
+## Loader Options
+
+### WithFile
+
+```go
+func WithFile(configFilePath string) Option
+```
+
+Specifies the configuration file path.
+
+```go
+loader := config.NewLoader(
+    config.WithFile("/etc/myapp/config.yaml"),
+)
+```
+
+### WithEnvPrefix
+
+```go
+func WithEnvPrefix(prefix string) Option
+```
+
+Sets a prefix for environment variables. Dots in config keys are replaced with underscores.
+
+```go
+loader := config.NewLoader(
+    config.WithEnvPrefix("MYAPP"),
+)
+// Reads MYAPP_SERVER_PORT for server.port
+```
+
+### WithFlags
+
+```go
+func WithFlags(flags *pflag.FlagSet) Option
+```
+
+Binds command-line flags dynamically based on `cmdx` struct tags.
+
+```go
+flags := pflag.NewFlagSet("myapp", pflag.ExitOnError)
+flags.Int("server.port", 8080, "Server port")
+
+loader := config.NewLoader(
+    config.WithFlags(flags),
+)
+```
+
+### WithAppConfig
+
+```go
+func WithAppConfig(app string) Option
+```
+
+Sets up application-specific configuration with platform-aware file paths:
+- Linux/Mac: `~/.config/raystack/<app>.yml`
+- Windows: `%APPDATA%\raystack\<app>.yml`
+
+```go
+loader := config.NewLoader(
+    config.WithAppConfig("myapp"),
+)
+```
+
+## Loader Methods
+
+### Load
+
+```go
+func (l *Loader) Load(config interface{}) error
+```
+
+Reads configuration from all sources and merges them into the provided struct.
+
+**Priority Order:**
+1. Command-line flags (highest)
+2. Environment variables
+3. Configuration file
+4. Default values (lowest)
+
+**Example:**
+
+```go
+cfg := &Config{}
+if err := loader.Load(cfg); err != nil {
+    log.Fatal(err)
+}
+```
+
+### Init
+
+```go
+func (l *Loader) Init(config interface{}) error
+```
+
+Initializes a configuration file with default values.
+
+```go
+cfg := &Config{}
+if err := loader.Init(cfg); err != nil {
+    log.Fatal(err)
+}
+```
+
+### Get
+
+```go
+func (l *Loader) Get(key string) interface{}
+```
+
+Retrieves a configuration value by key.
+
+```go
+port := loader.Get("server.port")
+```
+
+### Set
+
+```go
+func (l *Loader) Set(key string, value interface{})
+```
+
+Updates a configuration value in memory (not persisted).
+
+```go
+loader.Set("server.port", 9090)
+```
+
+### Save
+
+```go
+func (l *Loader) Save() error
+```
+
+Writes the current configuration to the configured file.
+
+```go
+if err := loader.Save(); err != nil {
+    log.Fatal(err)
+}
+```
+
+### View
+
+```go
+func (l *Loader) View() (string, error)
+```
+
+Returns the current configuration as formatted JSON.
+
+```go
+jsonConfig, err := loader.View()
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(jsonConfig)
+```
+
+## Struct Tags
+
+Configure your structs using the following tags:
+
+### mapstructure
+
+Maps configuration keys to struct fields.
+
+```go
+type Config struct {
+    Port int `mapstructure:"server.port"`
+}
+```
+
+### default
+
+Specifies default values.
+
+```go
+type Config struct {
+    Port int `mapstructure:"server.port" default:"8080"`
+}
+```
+
+### validate
+
+Defines validation rules using `go-playground/validator` syntax.
+
+```go
+type Config struct {
+    Port int    `mapstructure:"server.port" validate:"required,min=1,max=65535"`
+    Level string `mapstructure:"log.level" validate:"oneof=debug info warn error"`
+}
+```
+
+### cmdx
+
+Binds command-line flags when using `WithFlags` option.
+
+```go
+type Config struct {
+    Port int `mapstructure:"server.port" cmdx:"server.port"`
+}
+```
+
+## Configuration File Example
+
+**config.yaml:**
+
+```yaml
+server:
+  port: 8080
+  host: localhost
+  timeout: 30s
+
+database:
+  driver: postgres
+  url: postgres://localhost:5432/mydb
+  max_open_conns: 25
+
+log:
+  level: info
+  format: json
+```
+
+## Environment Variables
+
+With `WithEnvPrefix("MYAPP")`, you can override configuration:
+
+```bash
+export MYAPP_SERVER_PORT=9090
+export MYAPP_LOG_LEVEL=debug
+```
+
+Note: Dots in keys are replaced with underscores in environment variables.
+
+## Complete Example with Flags
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "os"
+    
+    "github.com/raystack/salt/config"
+    "github.com/spf13/pflag"
+)
+
+type Config struct {
+    ServerPort int    `mapstructure:"server.port" cmdx:"server.port" default:"8080" validate:"required,min=1"`
+    LogLevel   string `mapstructure:"log.level" cmdx:"log.level" default:"info" validate:"required,oneof=debug info warn error"`
+}
+
+func main() {
+    flags := pflag.NewFlagSet("example", pflag.ExitOnError)
+    flags.Int("server.port", 8080, "Server port")
+    flags.String("log.level", "info", "Log level")
+    
+    loader := config.NewLoader(
+        config.WithFile("./config.yaml"),
+        config.WithEnvPrefix("MYAPP"),
+        config.WithFlags(flags),
+    )
+    
+    flags.Parse(os.Args[1:])
+    
+    cfg := &Config{}
+    if err := loader.Load(cfg); err != nil {
+        log.Fatalf("Failed to load configuration: %v", err)
+    }
+    
+    fmt.Printf("Server Port: %d\n", cfg.ServerPort)
+    fmt.Printf("Log Level: %s\n", cfg.LogLevel)
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Validation Tags">
+    Always add `validate` tags to ensure configuration correctness:
+    ```go
+    Port int `validate:"required,min=1,max=65535"`
+    ```
+  </Accordion>
+  
+  <Accordion title="Provide Sensible Defaults">
+    Use `default` tags for non-critical settings:
+    ```go
+    LogLevel string `default:"info"`
+    ```
+  </Accordion>
+  
+  <Accordion title="Document Configuration">
+    Use struct comments to document configuration options:
+    ```go
+    // ServerPort is the HTTP server listening port
+    ServerPort int `mapstructure:"server.port"`
+    ```
+  </Accordion>
+  
+  <Accordion title="Group Related Settings">
+    Use nested structs for better organization:
+    ```go
+    type Config struct {
+        Server ServerConfig `mapstructure:"server"`
+        Database DBConfig   `mapstructure:"database"`
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+The `Load` method returns detailed errors for:
+
+- **Missing files**: Returns warning, falls back to defaults
+- **Invalid struct**: Returns error if not a pointer to struct
+- **Validation failures**: Returns detailed validation errors
+- **Type mismatches**: Returns unmarshal errors
+
+```go
+if err := loader.Load(cfg); err != nil {
+    // Check for validation errors
+    if validationErr, ok := err.(validator.ValidationErrors); ok {
+        for _, e := range validationErr {
+            fmt.Printf("Field %s failed validation: %s\n", e.Field(), e.Tag())
+        }
+    }
+}
+```

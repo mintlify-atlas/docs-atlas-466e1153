@@ -1,97 +1,269 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Salt Documentation
+description: A collection of Go libraries and tools for building cloud-native applications in the Raystack ecosystem
+mode: custom
 ---
 
-## Setting up
+<div className="relative overflow-hidden dark:bg-[#0f1117] bg-white py-20">
+  <div className="max-w-6xl mx-auto px-6 lg:px-8">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold dark:text-gray-100 text-gray-900 mb-6">
+          Build cloud-native Go applications with Salt
+        </h1>
+        <p className="text-base sm:text-lg dark:text-gray-400 text-gray-600 mb-8 max-w-2xl">
+          A modular collection of battle-tested libraries for configuration, CLI tools, authentication, observability, and more in the Raystack ecosystem.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a
+            href="/quickstart"
+            className="inline-flex items-center justify-center px-6 py-3 text-base font-semibold text-white rounded-lg transition-colors"
+            style={{ backgroundColor: '#94cb04' }}
+          >
+            Get Started
+          </a>
+          <a
+            href="/packages/overview"
+            className="inline-flex items-center justify-center px-6 py-3 text-base font-semibold dark:text-gray-100 text-gray-900 dark:bg-white/10 bg-gray-100 dark:border-white/30 border border-gray-300 rounded-lg dark:hover:bg-white/20 hover:bg-gray-200 transition-colors"
+          >
+            Explore Packages
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5 hidden lg:block">
+        <div className="relative">
+          <div className="dark:bg-[#1a1d27] bg-gray-50 rounded-2xl p-6 dark:border-[#27272a] border border-gray-200">
+            <pre className="text-sm dark:text-gray-300 text-gray-800 overflow-x-auto">
+              <code>{`package main
 
-Get your documentation site up and running in minutes.
+import (
+    "github.com/raystack/salt/config"
+    "github.com/raystack/salt/log"
+)
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+func main() {
+    // Initialize configuration
+    loader := config.NewLoader(
+        config.WithFile("config.yaml"),
+    )
+    
+    // Set up logging
+    logger := log.NewLogrus()
+    
+    logger.Info("Salt is ready!")
+}`}</code>
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-2xl sm:text-3xl font-bold dark:text-white text-gray-900 mb-4">
+      Get started in minutes
+    </h2>
+    <p className="text-base dark:text-gray-400 text-gray-600 max-w-2xl mx-auto">
+      Salt provides everything you need to build robust Go applications with minimal setup
+    </p>
+  </div>
 
-Design a docs site that looks great and empowers your users.
+  <Steps>
+    <Step title="Install Salt">
+      Add Salt to your Go project using go get:
+      ```bash
+      go get github.com/raystack/salt
+      ```
+    </Step>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+    <Step title="Import packages">
+      Import the packages you need in your application:
+      ```go
+      import (
+          "github.com/raystack/salt/config"
+          "github.com/raystack/salt/log"
+          "github.com/raystack/salt/db"
+      )
+      ```
+    </Step>
 
-## Create beautiful pages
+    <Step title="Initialize components">
+      Set up the components for your application:
+      ```go
+      // Load configuration
+      loader := config.NewLoader(
+          config.WithFile("./config.yaml"),
+          config.WithEnvPrefix("MYAPP"),
+      )
+      
+      var cfg AppConfig
+      if err := loader.Load(&cfg); err != nil {
+          panic(err)
+      }
+      
+      // Initialize logger
+      logger := log.NewLogrus(
+          log.LogrusWithLevel("info"),
+      )
+      
+      logger.Info("Application started")
+      ```
+    </Step>
 
-Everything you need to create world-class documentation.
+    <Step title="Start building">
+      You're ready to build your cloud-native application with Salt's utilities for CLI tools, authentication, database connections, telemetry, and more.
+      
+      <Note>
+        Check out the [Packages Overview](/packages/overview) to explore all available utilities.
+      </Note>
+    </Step>
+  </Steps>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-12">
+    <h2 className="text-2xl sm:text-3xl font-bold dark:text-white text-gray-900 mb-4">
+      Explore by category
+    </h2>
+    <p className="text-base dark:text-gray-400 text-gray-600">
+      Choose the right package for your needs
+    </p>
+  </div>
 
-## Need inspiration?
+  <CardGroup cols={2}>
+    <Card title="Configuration" icon="gear" href="/packages/config">
+      Manage application settings with environment variables, files, and defaults using Viper
+    </Card>
+    <Card title="CLI Utilities" icon="terminal" href="/packages/cli">
+      Build powerful command-line tools with Cobra integration, prompts, and output formatting
+    </Card>
+    <Card title="Authentication" icon="shield-halved" href="/packages/auth">
+      Implement OpenID Connect flows and audit logging for security and compliance
+    </Card>
+    <Card title="Database" icon="database" href="/packages/db">
+      Connect to databases with connection pooling, transactions, and migration support
+    </Card>
+    <Card title="Observability" icon="chart-line" href="/packages/telemetry">
+      Integrate OpenTelemetry for metrics and distributed tracing
+    </Card>
+    <Card title="Logging" icon="file-lines" href="/packages/log">
+      Structured logging with support for Logrus and Zap
+    </Card>
+    <Card title="JSON Utilities" icon="code-compare" href="/packages/jsondiff">
+      Calculate differences between JSON documents and reconstruct from diffs
+    </Card>
+    <Card title="Query Language" icon="filter" href="/packages/rql">
+      Parse REST query parameters for filtering, sorting, and pagination
+    </Card>
+  </CardGroup>
+</div>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-12">
+    <h2 className="text-2xl sm:text-3xl font-bold dark:text-white text-gray-900 mb-4">
+      Key features
+    </h2>
+  </div>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="dark:bg-[#1a1d27] bg-gray-50 rounded-xl p-6 dark:border-[#27272a] border border-gray-200">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#94cb04' }}>
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-base font-semibold dark:text-white text-gray-900 mb-2">
+            Production-ready
+          </h3>
+          <p className="text-sm dark:text-gray-400 text-gray-600">
+            Battle-tested libraries used across the Raystack ecosystem in production environments
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div className="dark:bg-[#1a1d27] bg-gray-50 rounded-xl p-6 dark:border-[#27272a] border border-gray-200">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#94cb04' }}>
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-base font-semibold dark:text-white text-gray-900 mb-2">
+            Modular design
+          </h3>
+          <p className="text-sm dark:text-gray-400 text-gray-600">
+            Pick only the packages you need without bringing in unnecessary dependencies
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div className="dark:bg-[#1a1d27] bg-gray-50 rounded-xl p-6 dark:border-[#27272a] border border-gray-200">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#94cb04' }}>
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-base font-semibold dark:text-white text-gray-900 mb-2">
+            Type-safe
+          </h3>
+          <p className="text-sm dark:text-gray-400 text-gray-600">
+            Full Go type safety with comprehensive struct tags and validation support
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div className="dark:bg-[#1a1d27] bg-gray-50 rounded-xl p-6 dark:border-[#27272a] border border-gray-200">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#94cb04' }}>
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-base font-semibold dark:text-white text-gray-900 mb-2">
+            Cloud-native
+          </h3>
+          <p className="text-sm dark:text-gray-400 text-gray-600">
+            Built for modern cloud infrastructure with observability, health checks, and graceful shutdowns
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="dark:bg-[#1a1d27] bg-gray-50 rounded-2xl p-8 sm:p-12 dark:border-[#27272a] border border-gray-200 text-center">
+    <h2 className="text-2xl sm:text-3xl font-bold dark:text-white text-gray-900 mb-4">
+      Ready to get started?
+    </h2>
+    <p className="text-base dark:text-gray-400 text-gray-600 mb-8 max-w-2xl mx-auto">
+      Explore the comprehensive API reference or jump straight into building with our quickstart guide
+    </p>
+    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+      <a
+        href="/quickstart"
+        className="inline-flex items-center justify-center px-6 py-3 text-base font-semibold text-white rounded-lg transition-colors"
+        style={{ backgroundColor: '#94cb04' }}
+      >
+        View Quickstart
+      </a>
+      <a
+        href="/api/config"
+        className="inline-flex items-center justify-center px-6 py-3 text-base font-semibold dark:text-gray-100 text-gray-900 dark:bg-white/10 bg-gray-100 dark:border-white/30 border border-gray-300 rounded-lg dark:hover:bg-white/20 hover:bg-gray-200 transition-colors"
+      >
+        API Reference
+      </a>
+    </div>
+  </div>
+</div>

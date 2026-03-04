@@ -1,0 +1,388 @@
+---
+title: "RQL (Rest Query Language) API"
+description: "API reference for RQL - parse advanced REST API query parameters like filters, pagination, sort, group, and search"
+---
+
+A library to parse and validate advanced REST API query parameters including filters, pagination, sorting, grouping, and search with logical operators.
+
+RQL takes a Golang struct and a JSON string as input and returns a validated object that can be used to prepare SQL statements using raw SQL or ORM query builders.
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/rql
+```
+
+## Features
+
+- **Filter Support**: Complex filtering with operators (eq, neq, like, gt, lt, etc.)
+- **Pagination**: Offset and limit support
+- **Sorting**: Multi-field sorting with asc/desc ordering
+- **Grouping**: Group by multiple fields
+- **Search**: Fuzzy search across specified columns
+- **Type Validation**: Validates data types using struct tags
+- **Operator Validation**: Ensures operators are valid for each data type
+
+## Data Structures
+
+### Query
+
+Represents a complete query with filters, sorting, pagination, and more.
+
+```go
+type Query struct {
+    Filters []Filter `json:"filters"`
+    GroupBy []string `json:"group_by"`
+    Offset  int      `json:"offset"`
+    Limit   int      `json:"limit"`
+    Search  string   `json:"search"`
+    Sort    []Sort   `json:"sort"`
+}
+```
+
+<ParamField path="filters" type="[]Filter">
+  Array of filter conditions to apply
+</ParamField>
+
+<ParamField path="group_by" type="[]string">
+  Fields to group results by
+</ParamField>
+
+<ParamField path="offset" type="int">
+  Number of records to skip (for pagination)
+</ParamField>
+
+<ParamField path="limit" type="int">
+  Maximum number of records to return
+</ParamField>
+
+<ParamField path="search" type="string">
+  Search term for fuzzy search across columns
+</ParamField>
+
+<ParamField path="sort" type="[]Sort">
+  Array of sort criteria
+</ParamField>
+
+### Filter
+
+Represents a single filter condition.
+
+```go
+type Filter struct {
+    Name     string `json:"name"`
+    Operator string `json:"operator"`
+    Value    any    `json:"value"`
+}
+```
+
+<ParamField path="name" type="string" required>
+  Field name to filter on (must match struct tag)
+</ParamField>
+
+<ParamField path="operator" type="string" required>
+  Comparison operator (e.g., `eq`, `neq`, `like`, `gt`, `gte`, `lt`, `lte`, `in`, `notin`)
+</ParamField>
+
+<ParamField path="value" type="any" required>
+  Value to compare against (type must match field data type)
+</ParamField>
+
+### Sort
+
+Represents sorting criteria for a field.
+
+```go
+type Sort struct {
+    Name  string `json:"name"`
+    Order string `json:"order"`
+}
+```
+
+<ParamField path="name" type="string" required>
+  Field name to sort by
+</ParamField>
+
+<ParamField path="order" type="string" required>
+  Sort order: `"asc"` or `"desc"`
+</ParamField>
+
+## Functions
+
+### ValidateQuery
+
+Validates a query against a struct definition with RQL tags.
+
+```go
+func ValidateQuery(q *Query, checkStruct interface{}) error
+```
+
+<ParamField path="q" type="*Query" required>
+  The query to validate
+</ParamField>
+
+<ParamField path="checkStruct" type="interface{}" required>
+  A struct with `rql` tags defining valid fields and types
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Validation error if query is invalid, nil if valid
+</ResponseField>
+
+**Example:**
+
+```go
+import (
+    "encoding/json"
+    "github.com/raystack/salt/rql"
+)
+
+type Organization struct {
+    Id              int       `rql:"name=id,type=number,min=10,max=200"`
+    BillingPlanName string    `rql:"name=plan_name,type=string"`
+    CreatedAt       time.Time `rql:"name=created_at,type=datetime"`
+    MemberCount     int       `rql:"name=member_count,type=number"`
+    Title           string    `rql:"name=title,type=string"`
+    Enabled         bool      `rql:"name=enabled,type=bool"`
+}
+
+userInput := &rql.Query{}
+err := json.Unmarshal(jsonBytes, userInput)
+if err != nil {
+    panic(err)
+}
+
+err = rql.ValidateQuery(userInput, Organization{})
+if err != nil {
+    panic(err)
+}
+```
+
+### GetDataTypeOfField
+
+Retrieves the data type of a field from the struct definition.
+
+```go
+func GetDataTypeOfField(fieldName string, checkStruct interface{}) (string, error)
+```
+
+<ParamField path="fieldName" type="string" required>
+  Name of the field to check
+</ParamField>
+
+<ParamField path="checkStruct" type="interface{}" required>
+  Struct with RQL tags
+</ParamField>
+
+<ResponseField name="dataType" type="string">
+  The data type: `"number"`, `"string"`, `"datetime"`, or `"bool"`
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if field not found or invalid data type
+</ResponseField>
+
+## Supported Data Types
+
+Define data types using the `type` parameter in RQL tags:
+
+<ParamField path="number" type="data type">
+  Numeric values (int, uint, float, etc.)
+  
+  **Operators**: `eq`, `neq`, `gt`, `lt`, `gte`, `lte`
+</ParamField>
+
+<ParamField path="string" type="data type">
+  String values
+  
+  **Operators**: `eq`, `neq`, `like`, `in`, `notin`, `notlike`, `empty`, `notempty`
+</ParamField>
+
+<ParamField path="datetime" type="data type">
+  ISO 8601 datetime strings (RFC3339 format)
+  
+  **Operators**: `eq`, `neq`, `gt`, `lt`, `gte`, `lte`
+</ParamField>
+
+<ParamField path="bool" type="data type">
+  Boolean values
+  
+  **Operators**: `eq`, `neq`
+</ParamField>
+
+## Struct Tags
+
+Define validation rules using the `rql` struct tag:
+
+```go
+`rql:"name=field_name,type=datatype,min=value,max=value"`
+```
+
+<ParamField path="name" type="tag parameter" required>
+  Field name as used in queries (defaults to struct field name)
+</ParamField>
+
+<ParamField path="type" type="tag parameter" required>
+  Data type: `number`, `string`, `datetime`, or `bool`
+</ParamField>
+
+<ParamField path="min" type="tag parameter">
+  Minimum value (for number types) - planned feature
+</ParamField>
+
+<ParamField path="max" type="tag parameter">
+  Maximum value (for number types) - planned feature
+</ParamField>
+
+## Constants
+
+```go
+const TAG = "rql"
+const DATATYPE_NUMBER = "number"
+const DATATYPE_DATETIME = "datetime"
+const DATATYPE_STRING = "string"
+const DATATYPE_BOOL = "bool"
+const SORT_ORDER_ASC = "asc"
+const SORT_ORDER_DESC = "desc"
+```
+
+## Query JSON Format
+
+Frontend should send parameters in this JSON schema:
+
+```json
+{
+  "filters": [
+    { "name": "id", "operator": "neq", "value": 20 },
+    { "name": "title", "operator": "like", "value": "xyz" },
+    { "name": "enabled", "operator": "eq", "value": false },
+    {
+      "name": "created_at",
+      "operator": "gte",
+      "value": "2025-02-05T11:25:37.957Z"
+    }
+  ],
+  "group_by": ["plan_name"],
+  "offset": 20,
+  "limit": 50,
+  "search": "abcd",
+  "sort": [
+    { "name": "title", "order": "desc" },
+    { "name": "created_at", "order": "asc" }
+  ]
+}
+```
+
+## Complete Example with SQL Generation
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "time"
+    "github.com/doug-martin/goqu/v9"
+    "github.com/raystack/salt/rql"
+)
+
+type Organization struct {
+    Id              int       `rql:"name=id,type=number,min=10,max=200"`
+    BillingPlanName string    `rql:"name=plan_name,type=string"`
+    CreatedAt       time.Time `rql:"name=created_at,type=datetime"`
+    MemberCount     int       `rql:"name=member_count,type=number"`
+    Title           string    `rql:"name=title,type=string"`
+    Enabled         bool      `rql:"name=enabled,type=bool"`
+}
+
+func main() {
+    queryJSON := `{
+        "filters": [
+            {"name": "id", "operator": "neq", "value": 20},
+            {"name": "enabled", "operator": "eq", "value": false}
+        ],
+        "offset": 20,
+        "limit": 50,
+        "search": "abcd",
+        "sort": [
+            {"name": "title", "order": "desc"}
+        ]
+    }`
+
+    // Parse query
+    userInput := &rql.Query{}
+    err := json.Unmarshal([]byte(queryJSON), userInput)
+    if err != nil {
+        panic(err)
+    }
+
+    // Validate query
+    err = rql.ValidateQuery(userInput, Organization{})
+    if err != nil {
+        panic(err)
+    }
+
+    // Build SQL using goqu
+    query := goqu.From("organizations")
+
+    // Apply filters
+    for _, filter := range userInput.Filters {
+        query = query.Where(goqu.Ex{
+            filter.Name: goqu.Op{filter.Operator: filter.Value},
+        })
+    }
+
+    // Apply fuzzy search
+    fuzzySearchColumns := []string{"id", "billing_plan_name", "title"}
+    if userInput.Search != "" {
+        expressions := make([]goqu.Expression, 0)
+        for _, col := range fuzzySearchColumns {
+            expressions = append(expressions, goqu.Ex{
+                col: goqu.Op{"LIKE": userInput.Search},
+            })
+        }
+        query = query.Where(goqu.Or(expressions...))
+    }
+
+    // Apply sorting
+    for _, sort := range userInput.Sort {
+        switch sort.Order {
+        case "asc":
+            query = query.OrderAppend(goqu.C(sort.Name).Asc())
+        case "desc":
+            query = query.OrderAppend(goqu.C(sort.Name).Desc())
+        }
+    }
+
+    // Apply pagination
+    query = query.Offset(uint(userInput.Offset))
+    query = query.Limit(uint(userInput.Limit))
+
+    sql, _, _ := query.ToSQL()
+    fmt.Println(sql)
+}
+```
+
+**Output:**
+```sql
+SELECT * FROM "organizations" 
+WHERE (("id" != 20) AND ("enabled" IS FALSE) 
+AND (("id" LIKE 'abcd') OR ("billing_plan_name" LIKE 'abcd') OR ("title" LIKE 'abcd'))) 
+ORDER BY "title" DESC 
+LIMIT 50 OFFSET 20
+```
+
+## Error Handling
+
+The library returns detailed validation errors for:
+- Invalid field names that don't exist in the struct
+- Invalid operators for the field's data type
+- Type mismatches between filter values and field types
+- Invalid datetime formats (must be RFC3339)
+- Invalid sort orders (must be "asc" or "desc")
+
+## Future Improvements
+
+1. Operator mapping to SQL operators (currently relies on query builders like GoQU)
+2. Support for `min` and `max` validation on numeric values
+3. More complex query expressions with AND/OR grouping

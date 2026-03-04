@@ -1,0 +1,569 @@
+---
+title: Printer
+description: Terminal output formatting library for colored text, tables, progress bars, and structured data
+icon: palette
+---
+
+## Overview
+
+Printer provides a comprehensive set of utilities for formatting terminal output, including colored text, tables, spinners, progress bars, markdown rendering, and structured data output (JSON/YAML).
+
+## Text Output
+
+Colored text output functions with support for different message types.
+
+### Success
+
+Prints success messages in green.
+
+```go
+func Success(t ...string)
+func Successln(t ...string)
+func Successf(t string, args ...interface{})
+```
+
+<ParamField path="t" type="...string">
+  Messages to print in green
+</ParamField>
+
+**Example:**
+
+```go
+printer.Success("Deployment completed")
+printer.Successln("Build", " ", "successful")
+printer.Successf("Deployed %d services", 5)
+```
+
+### Warning
+
+Prints warning messages in yellow.
+
+```go
+func Warning(t ...string)
+func Warningln(t ...string)
+func Warningf(t string, args ...interface{})
+```
+
+<ParamField path="t" type="...string">
+  Messages to print in yellow
+</ParamField>
+
+**Example:**
+
+```go
+printer.Warning("Deprecated feature")
+printer.Warningln("This will be removed in v2.0")
+printer.Warningf("Found %d warnings", 3)
+```
+
+### Error
+
+Prints error messages in red.
+
+```go
+func Error(t ...string)
+func Errorln(t ...string)
+func Errorf(t string, args ...interface{})
+```
+
+<ParamField path="t" type="...string">
+  Messages to print in red
+</ParamField>
+
+**Example:**
+
+```go
+printer.Error("Connection failed")
+printer.Errorln("Unable to reach server")
+printer.Errorf("Error: %v", err)
+```
+
+### Info
+
+Prints informational messages in cyan.
+
+```go
+func Info(t ...string)
+func Infoln(t ...string)
+func Infof(t string, args ...interface{})
+```
+
+<ParamField path="t" type="...string">
+  Messages to print in cyan
+</ParamField>
+
+**Example:**
+
+```go
+printer.Info("Starting deployment")
+printer.Infoln("Connecting to server...")
+printer.Infof("Processing %d items", 100)
+```
+
+### Text Styles
+
+Format text with bold or italic styles.
+
+```go
+func Bold(t ...string) string
+func Boldln(t ...string)
+func Boldf(t string, args ...interface{}) string
+
+func Italic(t ...string) string
+func Italicln(t ...string)
+func Italicf(t string, args ...interface{}) string
+```
+
+**Example:**
+
+```go
+fmt.Println(printer.Bold("Important:"), "Read this carefully")
+printer.Boldln("Configuration")
+title := printer.Boldf("Section %d", 1)
+
+fmt.Println(printer.Italic("Note:"), "Optional parameter")
+printer.Italicln("Deprecated")
+```
+
+## Color Functions
+
+Direct color output with theme support (automatically adapts to light/dark terminals).
+
+### Available Colors
+
+```go
+func Green(t ...string) string
+func Greenf(t string, args ...interface{}) string
+
+func Yellow(t ...string) string
+func Yellowf(t string, args ...interface{}) string
+
+func Cyan(t ...string) string
+func Cyanf(t string, args ...interface{}) string
+
+func Red(t ...string) string
+func Redf(t string, args ...interface{}) string
+
+func Blue(t ...string) string
+func Bluef(t string, args ...interface{}) string
+
+func Grey(t ...string) string
+func Greyf(t string, args ...interface{}) string
+
+func Magenta(t ...string) string
+func Magentaf(t string, args ...interface{}) string
+```
+
+**Example:**
+
+```go
+fmt.Println(printer.Green("Success"))
+fmt.Println(printer.Yellowf("Warning: %s", msg))
+fmt.Println(printer.Cyan("Info"), printer.Grey("details"))
+```
+
+### Icon
+
+Returns Unicode icons for common message types.
+
+```go
+func Icon(name string) string
+```
+
+<ParamField path="name" type="string" required>
+  Icon name: "success", "failure", "info", or "warning"
+</ParamField>
+
+<ResponseField name="icon" type="string">
+  Unicode character: ✔ (success), ✘ (failure), ℹ (info), ⚠ (warning)
+</ResponseField>
+
+**Example:**
+
+```go
+fmt.Printf("%s Build successful\n", printer.Icon("success"))
+fmt.Printf("%s Deployment failed\n", printer.Icon("failure"))
+```
+
+### Theme
+
+Color theme that adapts to terminal background (light/dark).
+
+```go
+type Theme struct {
+    Green   termenv.Color
+    Yellow  termenv.Color
+    Cyan    termenv.Color
+    Red     termenv.Color
+    Grey    termenv.Color
+    Blue    termenv.Color
+    Magenta termenv.Color
+}
+
+func NewTheme() Theme
+```
+
+## Table Output
+
+Render data in a clean, terminal-friendly table format.
+
+### Table
+
+```go
+func Table(target io.Writer, rows [][]string)
+```
+
+<ParamField path="target" type="io.Writer" required>
+  Output destination (e.g., os.Stdout)
+</ParamField>
+
+<ParamField path="rows" type="[][]string" required>
+  2D slice where each inner slice is a row, and elements are column values
+</ParamField>
+
+**Features:**
+- Disables text wrapping
+- Left-aligned headers and content
+- No borders or separators
+- Tab padding for clean alignment
+
+**Example:**
+
+```go
+rows := [][]string{
+    {"ID", "Name", "Status"},
+    {"1", "service-a", "running"},
+    {"2", "service-b", "stopped"},
+    {"3", "service-c", "running"},
+}
+
+printer.Table(os.Stdout, rows)
+// Output:
+// ID    Name        Status
+// 1     service-a   running
+// 2     service-b   stopped
+// 3     service-c   running
+```
+
+## Structured Output
+
+Output data in JSON or YAML format.
+
+### JSON
+
+Prints data in compact JSON format.
+
+```go
+func JSON(data interface{}) error
+```
+
+<ParamField path="data" type="interface{}" required>
+  Data structure to marshal as JSON
+</ParamField>
+
+**Example:**
+
+```go
+data := map[string]interface{}{
+    "name": "service-a",
+    "status": "running",
+    "port": 8080,
+}
+
+if err := printer.JSON(data); err != nil {
+    log.Fatal(err)
+}
+// Output: {"name":"service-a","status":"running","port":8080}
+```
+
+### PrettyJSON
+
+Prints data in indented, readable JSON format.
+
+```go
+func PrettyJSON(data interface{}) error
+```
+
+<ParamField path="data" type="interface{}" required>
+  Data structure to marshal as pretty-printed JSON
+</ParamField>
+
+**Example:**
+
+```go
+if err := printer.PrettyJSON(data); err != nil {
+    log.Fatal(err)
+}
+// Output:
+// {
+//     "name": "service-a",
+//     "status": "running",
+//     "port": 8080
+// }
+```
+
+### YAML
+
+Prints data in YAML format.
+
+```go
+func YAML(data interface{}) error
+```
+
+<ParamField path="data" type="interface{}" required>
+  Data structure to marshal as YAML
+</ParamField>
+
+**Example:**
+
+```go
+if err := printer.YAML(data); err != nil {
+    log.Fatal(err)
+}
+// Output:
+// name: service-a
+// status: running
+// port: 8080
+```
+
+### File
+
+Generic function to output data in a specified format.
+
+```go
+func File(data interface{}, format string) error
+```
+
+<ParamField path="data" type="interface{}" required>
+  Data structure to marshal
+</ParamField>
+
+<ParamField path="format" type="string" required>
+  Format: "json", "prettyjson", or "yaml"
+</ParamField>
+
+**Example:**
+
+```go
+format := "yaml" // from user flag
+if err := printer.File(data, format); err != nil {
+    log.Fatal(err)
+}
+```
+
+## Progress Indicators
+
+### Spinner
+
+Display an animated spinner for long-running operations.
+
+```go
+type Indicator struct {
+    // Internal spinner instance
+}
+
+func Spin(label string) *Indicator
+func (s *Indicator) Stop()
+```
+
+<ParamField path="label" type="string">
+  Text to display next to the spinner
+</ParamField>
+
+<ResponseField name="Indicator" type="*Indicator">
+  Spinner instance that can be stopped
+</ResponseField>
+
+**Example:**
+
+```go
+spinner := printer.Spin("Deploying application")
+// Perform long-running operation
+time.Sleep(5 * time.Second)
+spinner.Stop()
+printer.Successln("Deployment complete")
+```
+
+**Features:**
+- Automatically disabled on non-TTY terminals
+- Cyan color by default
+- 120ms update interval
+
+### Progress Bar
+
+Display a progress bar for tracked operations.
+
+```go
+func Progress(max int, description string) *progressbar.ProgressBar
+```
+
+<ParamField path="max" type="int" required>
+  Maximum value (100% completion)
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Description of the operation
+</ParamField>
+
+<ResponseField name="bar" type="*progressbar.ProgressBar">
+  Progress bar instance from github.com/schollz/progressbar/v3
+</ResponseField>
+
+**Example:**
+
+```go
+bar := printer.Progress(100, "Downloading files")
+for i := 0; i < 100; i++ {
+    // Simulate work
+    time.Sleep(50 * time.Millisecond)
+    bar.Add(1)
+}
+fmt.Println()
+printer.Successln("Download complete")
+```
+
+## Markdown Rendering
+
+Render markdown with terminal colors and formatting.
+
+### Markdown
+
+Renders markdown with default options (auto-style, emoji, no wrap).
+
+```go
+func Markdown(text string) (string, error)
+```
+
+<ParamField path="text" type="string" required>
+  Markdown text to render
+</ParamField>
+
+<ResponseField name="output" type="string">
+  Rendered markdown with ANSI colors
+</ResponseField>
+
+**Example:**
+
+```go
+md := `
+# Title
+
+This is **bold** and this is *italic*.
+
+- Item 1
+- Item 2
+
+` + "```" + `go
+fmt.Println("Hello")
+` + "```" + `
+`
+
+rendered, err := printer.Markdown(md)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Print(rendered)
+```
+
+### MarkdownWithWrap
+
+Renders markdown with word wrapping at specified width.
+
+```go
+func MarkdownWithWrap(text string, wrap int) (string, error)
+```
+
+<ParamField path="text" type="string" required>
+  Markdown text to render
+</ParamField>
+
+<ParamField path="wrap" type="int" required>
+  Word wrap width in characters
+</ParamField>
+
+**Example:**
+
+```go
+rendered, err := printer.MarkdownWithWrap(longText, 80)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Print(rendered)
+```
+
+## Utility Functions
+
+### Space
+
+Prints a single space character.
+
+```go
+func Space()
+```
+
+**Example:**
+
+```go
+printer.Info("Status:")
+printer.Space()
+printer.Success("OK")
+// Output: Status: OK (with colors)
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "os"
+    "time"
+    
+    "github.com/raystack/salt/cli/printer"
+)
+
+func main() {
+    // Print status messages
+    printer.Infoln("Starting deployment process...")
+    printer.Space()
+
+    // Show spinner during operation
+    spinner := printer.Spin("Initializing")
+    time.Sleep(2 * time.Second)
+    spinner.Stop()
+    printer.Successln("Initialized")
+
+    // Show progress bar
+    bar := printer.Progress(100, "Deploying services")
+    for i := 0; i < 100; i++ {
+        time.Sleep(50 * time.Millisecond)
+        bar.Add(1)
+    }
+    fmt.Println()
+
+    // Display results in table
+    results := [][]string{
+        {"Service", "Status", "Port"},
+        {"api", "running", "8080"},
+        {"web", "running", "3000"},
+        {"worker", "running", "-"},
+    }
+    printer.Table(os.Stdout, results)
+    printer.Space()
+
+    // Output structured data
+    data := map[string]interface{}{
+        "deployed": 3,
+        "failed":   0,
+        "duration": "5.2s",
+    }
+    
+    printer.Infoln("Deployment summary:")
+    printer.PrettyJSON(data)
+    printer.Space()
+
+    // Final status
+    fmt.Printf("%s ", printer.Icon("success"))
+    printer.Successln("Deployment completed successfully")
+}
+```

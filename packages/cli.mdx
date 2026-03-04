@@ -1,0 +1,567 @@
+---
+title: CLI Utilities
+description: Comprehensive CLI building tools including commander, printer, and prompter
+icon: terminal
+---
+
+The `cli` package provides a complete toolkit for building professional command-line interfaces. It includes utilities for command management, terminal output, user prompts, and more.
+
+## Sub-packages
+
+<CardGroup cols={2}>
+  <Card title="Commander" icon="gears">
+    Enhanced Cobra command management with hooks, topics, and reference generation
+  </Card>
+  
+  <Card title="Printer" icon="print">
+    Terminal output utilities including tables, spinners, and progress bars
+  </Card>
+  
+  <Card title="Prompter" icon="question">
+    Interactive user input with selections and confirmations
+  </Card>
+  
+  <Card title="Terminator" icon="window-maximize">
+    Terminal detection and browser/pager utilities
+  </Card>
+</CardGroup>
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/cli/commander
+go get github.com/raystack/salt/cli/printer
+go get github.com/raystack/salt/cli/prompter
+```
+
+## Commander
+
+The `commander` package extends Cobra with enhanced features for CLI management.
+
+### Manager
+
+```go
+type Manager struct {
+    RootCmd    *cobra.Command
+    Help       bool
+    Reference  bool
+    Completion bool
+    Config     bool
+    Docs       bool
+    Hooks      []HookBehavior
+    Topics     []HelpTopic
+}
+```
+
+Manages and configures CLI features.
+
+### Creating a Manager
+
+```go
+func New(rootCmd *cobra.Command, options ...func(*Manager)) *Manager
+```
+
+**Example:**
+
+```go
+package main
+
+import (
+    "github.com/raystack/salt/cli/commander"
+    "github.com/spf13/cobra"
+)
+
+func main() {
+    rootCmd := &cobra.Command{
+        Use:   "mycli",
+        Short: "My CLI application",
+    }
+    
+    manager := commander.New(
+        rootCmd,
+        commander.WithTopics(topics),
+        commander.WithHooks(hooks),
+    )
+    
+    manager.Init()
+    rootCmd.Execute()
+}
+```
+
+### Manager Options
+
+#### WithTopics
+
+```go
+func WithTopics(topics []HelpTopic) func(*Manager)
+```
+
+Adds help topics to your CLI.
+
+```go
+type HelpTopic struct {
+    Name    string
+    Short   string
+    Long    string
+    Example string
+}
+
+topics := []commander.HelpTopic{
+    {
+        Name:    "authentication",
+        Short:   "Learn about authentication",
+        Long:    "Detailed authentication information...",
+        Example: "mycli login --token=xyz",
+    },
+}
+
+manager := commander.New(rootCmd, commander.WithTopics(topics))
+```
+
+#### WithHooks
+
+```go
+func WithHooks(hooks []HookBehavior) func(*Manager)
+```
+
+Applies custom behaviors to commands.
+
+```go
+type HookBehavior struct {
+    Name     string
+    Behavior func(cmd *cobra.Command)
+}
+
+hooks := []commander.HookBehavior{
+    {
+        Name: "auth",
+        Behavior: func(cmd *cobra.Command) {
+            cmd.PreRun = func(cmd *cobra.Command, args []string) {
+                // Check authentication
+            }
+        },
+    },
+}
+
+manager := commander.New(rootCmd, commander.WithHooks(hooks))
+```
+
+### Manager Methods
+
+#### Init
+
+```go
+func (m *Manager) Init()
+```
+
+Initializes all enabled features (help, reference, completion, topics, hooks).
+
+```go
+manager.Init()
+```
+
+#### IsCommandErr
+
+```go
+func IsCommandErr(err error) bool
+```
+
+Checks if an error is a Cobra command error (unknown command, flag, etc.).
+
+```go
+if err := rootCmd.Execute(); err != nil {
+    if commander.IsCommandErr(err) {
+        // User made a command error
+        fmt.Println("Command error:", err)
+    } else {
+        // Application error
+        log.Fatal(err)
+    }
+}
+```
+
+## Printer
+
+The `printer` package provides utilities for formatted terminal output.
+
+### Table
+
+```go
+func Table(target io.Writer, rows [][]string)
+```
+
+Renders a clean, terminal-friendly table.
+
+**Example:**
+
+```go
+package main
+
+import (
+    "os"
+    "github.com/raystack/salt/cli/printer"
+)
+
+func main() {
+    rows := [][]string{
+        {"ID", "Name", "Status"},
+        {"1", "Alice", "Active"},
+        {"2", "Bob", "Inactive"},
+        {"3", "Charlie", "Active"},
+    }
+    
+    printer.Table(os.Stdout, rows)
+}
+```
+
+**Output:**
+```
+ID    Name      Status
+1     Alice     Active
+2     Bob       Inactive
+3     Charlie   Active
+```
+
+### Spinner
+
+```go
+func Spin(label string) *Indicator
+```
+
+Creates and starts an animated spinner.
+
+```go
+type Indicator struct {
+    // Internal spinner
+}
+
+func (s *Indicator) Stop()
+```
+
+**Example:**
+
+```go
+package main
+
+import (
+    "time"
+    "github.com/raystack/salt/cli/printer"
+)
+
+func main() {
+    spinner := printer.Spin("Loading data")
+    
+    // Perform long operation
+    time.Sleep(5 * time.Second)
+    
+    spinner.Stop()
+    fmt.Println("Done!")
+}
+```
+
+### Progress Bar
+
+```go
+func Progress(max int) *progressbar.ProgressBar
+```
+
+Creates a progress bar for tracking long operations.
+
+**Example:**
+
+```go
+bar := printer.Progress(100)
+for i := 0; i < 100; i++ {
+    bar.Add(1)
+    time.Sleep(10 * time.Millisecond)
+}
+```
+
+### Structured Output
+
+Support for JSON and YAML output formats.
+
+```go
+package main
+
+import (
+    "os"
+    "github.com/raystack/salt/cli/printer"
+)
+
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+}
+
+func main() {
+    user := User{ID: 1, Name: "Alice"}
+    
+    // JSON output
+    printer.JSON(os.Stdout, user)
+    
+    // YAML output
+    printer.YAML(os.Stdout, user)
+}
+```
+
+## Prompter
+
+The `prompter` package provides interactive user input utilities.
+
+### Prompter Interface
+
+```go
+type Prompter interface {
+    Select(message, defaultValue string, options []string) (int, error)
+    MultiSelect(message, defaultValue string, options []string) ([]int, error)
+    Input(message, defaultValue string) (string, error)
+    Confirm(message string, defaultValue bool) (bool, error)
+}
+```
+
+### Creating a Prompter
+
+```go
+func New() Prompter
+```
+
+**Example:**
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/raystack/salt/cli/prompter"
+)
+
+func main() {
+    p := prompter.New()
+    
+    // Get user confirmation
+    confirmed, err := p.Confirm("Do you want to continue?", true)
+    if err != nil {
+        panic(err)
+    }
+    
+    if confirmed {
+        fmt.Println("Continuing...")
+    }
+}
+```
+
+### Select
+
+```go
+func (p *Prompter) Select(message, defaultValue string, options []string) (int, error)
+```
+
+Prompts user to select one option from a list.
+
+**Example:**
+
+```go
+p := prompter.New()
+
+options := []string{"Production", "Staging", "Development"}
+selected, err := p.Select("Select environment:", "Development", options)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Selected: %s\n", options[selected])
+```
+
+### MultiSelect
+
+```go
+func (p *Prompter) MultiSelect(message, defaultValue string, options []string) ([]int, error)
+```
+
+Prompts user to select multiple options.
+
+**Example:**
+
+```go
+p := prompter.New()
+
+features := []string{"Logging", "Metrics", "Tracing", "Profiling"}
+selected, err := p.MultiSelect("Select features to enable:", "", features)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println("Selected features:")
+for _, idx := range selected {
+    fmt.Printf("- %s\n", features[idx])
+}
+```
+
+### Input
+
+```go
+func (p *Prompter) Input(message, defaultValue string) (string, error)
+```
+
+Prompts user for text input.
+
+**Example:**
+
+```go
+p := prompter.New()
+
+name, err := p.Input("Enter your name:", "")
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Hello, %s!\n", name)
+```
+
+### Confirm
+
+```go
+func (p *Prompter) Confirm(message string, defaultValue bool) (bool, error)
+```
+
+Prompts user for yes/no confirmation.
+
+**Example:**
+
+```go
+p := prompter.New()
+
+confirmed, err := p.Confirm("Delete all data?", false)
+if err != nil {
+    log.Fatal(err)
+}
+
+if confirmed {
+    fmt.Println("Deleting...")
+} else {
+    fmt.Println("Cancelled")
+}
+```
+
+## Complete CLI Example
+
+Here's a complete example combining all CLI utilities:
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    "time"
+    
+    "github.com/raystack/salt/cli/commander"
+    "github.com/raystack/salt/cli/printer"
+    "github.com/raystack/salt/cli/prompter"
+    "github.com/spf13/cobra"
+)
+
+func main() {
+    var format string
+    
+    rootCmd := &cobra.Command{
+        Use:   "demo",
+        Short: "Demo CLI application",
+    }
+    
+    listCmd := &cobra.Command{
+        Use:   "list",
+        Short: "List users",
+        Run: func(cmd *cobra.Command, args []string) {
+            spinner := printer.Spin("Fetching users")
+            time.Sleep(2 * time.Second)
+            spinner.Stop()
+            
+            rows := [][]string{
+                {"ID", "Name", "Status"},
+                {"1", "Alice", "Active"},
+                {"2", "Bob", "Inactive"},
+            }
+            
+            printer.Table(os.Stdout, rows)
+        },
+    }
+    
+    deleteCmd := &cobra.Command{
+        Use:   "delete [id]",
+        Short: "Delete a user",
+        Args:  cobra.ExactArgs(1),
+        Run: func(cmd *cobra.Command, args []string) {
+            p := prompter.New()
+            
+            confirmed, err := p.Confirm(
+                fmt.Sprintf("Delete user %s?", args[0]),
+                false,
+            )
+            if err != nil {
+                fmt.Println("Error:", err)
+                return
+            }
+            
+            if confirmed {
+                spinner := printer.Spin("Deleting user")
+                time.Sleep(1 * time.Second)
+                spinner.Stop()
+                fmt.Println("User deleted successfully")
+            } else {
+                fmt.Println("Cancelled")
+            }
+        },
+    }
+    
+    rootCmd.AddCommand(listCmd, deleteCmd)
+    
+    manager := commander.New(rootCmd)
+    manager.Init()
+    
+    if err := rootCmd.Execute(); err != nil {
+        if commander.IsCommandErr(err) {
+            fmt.Println("Command error:", err)
+        } else {
+            fmt.Println("Error:", err)
+            os.Exit(1)
+        }
+    }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Spinners for Long Operations">
+    Always provide visual feedback for operations that take more than a second:
+    ```go
+    spinner := printer.Spin("Processing")
+    defer spinner.Stop()
+    ```
+  </Accordion>
+  
+  <Accordion title="Confirm Destructive Actions">
+    Always confirm before performing destructive operations:
+    ```go
+    confirmed, _ := prompter.Confirm("Delete all data?", false)
+    ```
+  </Accordion>
+  
+  <Accordion title="Support Multiple Output Formats">
+    Allow users to choose between table, JSON, and YAML output:
+    ```go
+    cmd.Flags().StringVar(&format, "format", "table", "Output format")
+    ```
+  </Accordion>
+  
+  <Accordion title="Organize Commands with Topics">
+    Use help topics to provide additional documentation:
+    ```go
+    topics := []commander.HelpTopic{
+        {Name: "auth", Short: "Authentication guide", ...},
+    }
+    ```
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,508 @@
+---
+title: Authentication Packages
+description: OIDC authentication and audit logging for secure applications
+icon: lock
+---
+
+The `auth` package provides authentication and auditing capabilities for secure Go applications. It includes OpenID Connect (OIDC) authentication with PKCE support and comprehensive audit logging.
+
+## Sub-packages
+
+<CardGroup cols={2}>
+  <Card title="OIDC" icon="key">
+    OpenID Connect authentication with PKCE flow
+  </Card>
+  
+  <Card title="Audit" icon="clipboard-check">
+    Audit logging for tracking user actions and system events
+  </Card>
+</CardGroup>
+
+## Installation
+
+```bash
+go get github.com/raystack/salt/auth/oidc
+go get github.com/raystack/salt/auth/audit
+```
+
+## OIDC Package
+
+The `oidc` package provides OpenID Connect authentication with PKCE (Proof Key for Code Exchange) support for enhanced security.
+
+### Features
+
+- **PKCE Support**: Implements RFC 7636 for secure authorization
+- **Browser-based Flow**: Automatic browser opening for user authentication
+- **Token Management**: Handles access tokens, refresh tokens, and ID tokens
+- **OAuth2 Integration**: Built on top of `golang.org/x/oauth2`
+
+### Creating a Token Source
+
+```go
+func NewTokenSource(ctx context.Context, conf *oauth2.Config, audience string) oauth2.TokenSource
+```
+
+Creates a new token source that handles the OIDC authentication flow.
+
+**Example:**
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    
+    "github.com/raystack/salt/auth/oidc"
+    "golang.org/x/oauth2"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    config := &oauth2.Config{
+        ClientID:     "your-client-id",
+        ClientSecret: "your-client-secret",
+        RedirectURL:  "http://localhost:8080/callback",
+        Endpoint: oauth2.Endpoint{
+            AuthURL:  "https://auth.example.com/authorize",
+            TokenURL: "https://auth.example.com/token",
+        },
+        Scopes: []string{"profile", "email"},
+    }
+    
+    tokenSource := oidc.NewTokenSource(ctx, config, "your-api-audience")
+    
+    token, err := tokenSource.Token()
+    if err != nil {
+        log.Fatal("Failed to get token:", err)
+    }
+    
+    fmt.Printf("Access Token: %s\n", token.AccessToken)
+}
+```
+
+### PKCE Flow
+
+The OIDC package automatically implements the PKCE flow:
+
+1. **Generate Code Verifier**: Random 32-byte string
+2. **Create Code Challenge**: SHA256 hash of verifier
+3. **Authorization Request**: Includes code challenge
+4. **Token Exchange**: Includes code verifier
+
+This prevents authorization code interception attacks.
+
+### Google Service Account Support
+
+The package also supports Google Service Account authentication:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    
+    "github.com/raystack/salt/auth/oidc"
+    "google.golang.org/api/option"
+)
+
+func main() {
+    ctx := context.Background()
+    
+    // Use service account credentials
+    tokenSource, err := oidc.NewGoogleServiceAccountTokenSource(
+        ctx,
+        "path/to/service-account.json",
+        "https://api.example.com",
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    token, err := tokenSource.Token()
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Use token for API calls
+    _ = token
+}
+```
+
+### Cobra Integration
+
+The package provides helpers for integrating OIDC authentication into Cobra CLI applications:
+
+```go
+package main
+
+import (
+    "github.com/raystack/salt/auth/oidc"
+    "github.com/spf13/cobra"
+)
+
+func main() {
+    var clientID, clientSecret string
+    
+    loginCmd := &cobra.Command{
+        Use:   "login",
+        Short: "Authenticate with OIDC",
+        RunE: func(cmd *cobra.Command, args []string) error {
+            return oidc.LoginCommand(cmd.Context(), clientID, clientSecret)
+        },
+    }
+    
+    loginCmd.Flags().StringVar(&clientID, "client-id", "", "OAuth2 client ID")
+    loginCmd.Flags().StringVar(&clientSecret, "client-secret", "", "OAuth2 client secret")
+    
+    rootCmd := &cobra.Command{Use: "app"}
+    rootCmd.AddCommand(loginCmd)
+    rootCmd.Execute()
+}
+```
+
+## Audit Package
+
+The `audit` package provides comprehensive audit logging for tracking user actions and system events.
+
+### Features
+
+- **Actor Tracking**: Records who performed each action
+- **Metadata Support**: Attach custom metadata to audit logs
+- **Repository Pattern**: Pluggable storage backends
+- **Context Integration**: Extracts audit information from context
+
+### Core Types
+
+#### Service
+
+```go
+type Service struct {
+    // Internal fields
+}
+```
+
+The main audit service that handles logging.
+
+#### Log
+
+```go
+type Log struct {
+    Timestamp time.Time              `json:"timestamp"`
+    Actor     string                 `json:"actor"`
+    Action    string                 `json:"action"`
+    Data      interface{}            `json:"data"`
+    Metadata  map[string]interface{} `json:"metadata"`
+}
+```
+
+Represents a single audit log entry.
+
+### Creating an Audit Service
+
+```go
+func New(opts ...AuditOption) *Service
+```
+
+**Example:**
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    
+    "github.com/raystack/salt/auth/audit"
+    "github.com/raystack/salt/auth/audit/repositories"
+)
+
+func main() {
+    // Create PostgreSQL repository
+    repo, err := repositories.NewPostgres(dbConfig)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Create audit service
+    auditSvc := audit.New(
+        audit.WithRepository(repo),
+        audit.WithActorExtractor(extractActorFromContext),
+        audit.WithMetadataExtractor(extractMetadataFromContext),
+    )
+    
+    // Log an action
+    ctx := audit.WithActor(context.Background(), "user@example.com")
+    err = auditSvc.Log(ctx, "user.login", map[string]interface{}{
+        "ip_address": "192.168.1.1",
+        "user_agent": "Mozilla/5.0",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### Audit Options
+
+#### WithRepository
+
+```go
+func WithRepository(r repository) AuditOption
+```
+
+Sets the storage repository for audit logs.
+
+```go
+repo, _ := repositories.NewPostgres(cfg)
+auditSvc := audit.New(audit.WithRepository(repo))
+```
+
+#### WithActorExtractor
+
+```go
+func WithActorExtractor(fn func(context.Context) (string, error)) AuditOption
+```
+
+Customizes how the actor (user) is extracted from context.
+
+```go
+extractActor := func(ctx context.Context) (string, error) {
+    user, ok := ctx.Value("user").(string)
+    if !ok {
+        return "system", nil
+    }
+    return user, nil
+}
+
+auditSvc := audit.New(audit.WithActorExtractor(extractActor))
+```
+
+#### WithMetadataExtractor
+
+```go
+func WithMetadataExtractor(fn func(context.Context) map[string]interface{}) AuditOption
+```
+
+Extracts additional metadata from context.
+
+```go
+extractMetadata := func(ctx context.Context) map[string]interface{} {
+    return map[string]interface{}{
+        "request_id": ctx.Value("request_id"),
+        "trace_id":   ctx.Value("trace_id"),
+    }
+}
+
+auditSvc := audit.New(audit.WithMetadataExtractor(extractMetadata))
+```
+
+### Context Helpers
+
+#### WithActor
+
+```go
+func WithActor(ctx context.Context, actor string) context.Context
+```
+
+Adds actor information to context.
+
+```go
+ctx := audit.WithActor(ctx, "user@example.com")
+```
+
+#### WithMetadata
+
+```go
+func WithMetadata(ctx context.Context, md map[string]interface{}) (context.Context, error)
+```
+
+Adds metadata to context.
+
+```go
+ctx, err := audit.WithMetadata(ctx, map[string]interface{}{
+    "ip_address": "192.168.1.1",
+    "user_agent": "Mozilla/5.0",
+})
+```
+
+### Logging Actions
+
+```go
+func (s *Service) Log(ctx context.Context, action string, data interface{}) error
+```
+
+Logs an audit event.
+
+**Example:**
+
+```go
+// User login
+ctx := audit.WithActor(ctx, "alice@example.com")
+err := auditSvc.Log(ctx, "user.login", map[string]interface{}{
+    "method": "password",
+    "success": true,
+})
+
+// Resource creation
+err = auditSvc.Log(ctx, "resource.create", map[string]interface{}{
+    "resource_type": "project",
+    "resource_id":   "proj-123",
+    "name":          "My Project",
+})
+
+// Permission change
+err = auditSvc.Log(ctx, "permission.grant", map[string]interface{}{
+    "user_id":    "user-456",
+    "resource_id": "proj-123",
+    "permission":  "admin",
+})
+```
+
+### PostgreSQL Repository
+
+The package includes a PostgreSQL repository implementation:
+
+```go
+package main
+
+import (
+    "github.com/raystack/salt/auth/audit/repositories"
+    "github.com/raystack/salt/db"
+)
+
+func main() {
+    dbClient, _ := db.New(db.Config{
+        Driver: "postgres",
+        URL:    "postgres://localhost:5432/mydb",
+    })
+    
+    repo := repositories.NewPostgres(dbClient)
+    
+    auditSvc := audit.New(audit.WithRepository(repo))
+}
+```
+
+## Complete Example: Authenticated API with Audit
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "net/http"
+    
+    "github.com/raystack/salt/auth/audit"
+    "github.com/raystack/salt/auth/audit/repositories"
+    "github.com/raystack/salt/auth/oidc"
+    "github.com/raystack/salt/db"
+    "golang.org/x/oauth2"
+)
+
+func main() {
+    // Setup audit logging
+    dbClient, _ := db.New(db.Config{
+        Driver: "postgres",
+        URL:    "postgres://localhost:5432/audit",
+    })
+    
+    repo := repositories.NewPostgres(dbClient)
+    auditSvc := audit.New(
+        audit.WithRepository(repo),
+        audit.WithActorExtractor(func(ctx context.Context) (string, error) {
+            user, _ := ctx.Value("user").(string)
+            return user, nil
+        }),
+    )
+    
+    // Setup OIDC
+    oauthConfig := &oauth2.Config{
+        ClientID:     "client-id",
+        ClientSecret: "client-secret",
+        RedirectURL:  "http://localhost:8080/callback",
+        Endpoint: oauth2.Endpoint{
+            AuthURL:  "https://auth.example.com/authorize",
+            TokenURL: "https://auth.example.com/token",
+        },
+    }
+    
+    // Authentication middleware
+    authMiddleware := func(next http.HandlerFunc) http.HandlerFunc {
+        return func(w http.ResponseWriter, r *http.Request) {
+            token := r.Header.Get("Authorization")
+            if token == "" {
+                http.Error(w, "Unauthorized", http.StatusUnauthorized)
+                return
+            }
+            
+            // Validate token and extract user
+            user := "user@example.com" // Extract from token
+            ctx := context.WithValue(r.Context(), "user", user)
+            
+            next(w, r.WithContext(ctx))
+        }
+    }
+    
+    // API endpoint with audit logging
+    http.HandleFunc("/api/resource", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+        ctx := r.Context()
+        user := ctx.Value("user").(string)
+        
+        // Log the action
+        auditCtx := audit.WithActor(ctx, user)
+        auditSvc.Log(auditCtx, "resource.access", map[string]interface{}{
+            "method": r.Method,
+            "path":   r.URL.Path,
+        })
+        
+        w.Write([]byte("Resource data"))
+    }))
+    
+    log.Fatal(http.ListenAndServe(":8080", nil))
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Log Sensitive Actions">
+    Log all actions that involve data access, modification, or permission changes:
+    ```go
+    auditSvc.Log(ctx, "data.export", exportDetails)
+    ```
+  </Accordion>
+  
+  <Accordion title="Include Relevant Context">
+    Attach meaningful metadata to audit logs:
+    ```go
+    ctx, _ = audit.WithMetadata(ctx, map[string]interface{}{
+        "ip_address": clientIP,
+        "user_agent": userAgent,
+    })
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Consistent Action Names">
+    Follow a naming convention for actions:
+    ```go
+    // Format: <resource>.<action>
+    "user.login"
+    "project.create"
+    "permission.revoke"
+    ```
+  </Accordion>
+  
+  <Accordion title="Secure Token Storage">
+    Never log tokens or passwords in audit logs:
+    ```go
+    auditSvc.Log(ctx, "auth.success", map[string]interface{}{
+        "method": "password",
+        // Don't include actual password or token
+    })
+    ```
+  </Accordion>
+</AccordionGroup>
