@@ -1,0 +1,129 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Salt",
+  "projectDescription": "A collection of Go libraries and tools for building cloud-native applications in the Raystack ecosystem",
+  "theme": "palm",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["introduction", "installation", "quickstart"]
+          },
+          {
+            "group": "Packages",
+            "pages": [
+              "packages/overview",
+              "packages/config",
+              "packages/cli",
+              "packages/auth",
+              "packages/server",
+              "packages/db",
+              "packages/telemetry",
+              "packages/log",
+              "packages/jsondiff",
+              "packages/rql",
+              "packages/utils"
+            ]
+          },
+          {
+            "group": "CLI Utilities",
+            "pages": [
+              "cli/commander",
+              "cli/printer",
+              "cli/prompter",
+              "cli/terminator"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": ["auth/oidc", "auth/audit"]
+          },
+          {
+            "group": "Server Utilities",
+            "pages": ["server/mux", "server/spa"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/config",
+              "api/log"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "api/cli/commander",
+              "api/cli/printer",
+              "api/cli/prompter",
+              "api/cli/terminator"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/auth/oidc",
+              "api/auth/audit"
+            ]
+          },
+          {
+            "group": "Infrastructure",
+            "pages": [
+              "api/server",
+              "api/db",
+              "api/telemetry"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/jsondiff",
+              "api/rql",
+              "api/utils"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Configuration management with Viper integration",
+    "CLI utilities with Cobra command management",
+    "OpenID Connect authentication support",
+    "Database connection and migration utilities",
+    "OpenTelemetry observability integration",
+    "Flexible logging with Logrus and Zap",
+    "JSON diff and reconstruction",
+    "REST Query Language parser",
+    "HTTP server utilities with SPA support"
+  ],
+  "publicApiSurface": [
+    "config.NewLoader",
+    "config.Loader.Load",
+    "commander.New",
+    "commander.Manager.Init",
+    "auth/oidc - OIDC authentication helpers",
+    "auth/audit - Audit logging",
+    "db.New",
+    "db.Client.WithTxn",
+    "telemetry.Init",
+    "log.NewLogrus",
+    "log.NewZap",
+    "jsondiff.NewJSONDiffer",
+    "jsondiff.NewWI2LDiffer",
+    "jsondiff.NewJSONReconstructor",
+    "rql.ValidateQuery",
+    "server/mux - HTTP multiplexer utilities",
+    "server/spa - Single-page application server"
+  ]
+}
