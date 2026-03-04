@@ -1,0 +1,294 @@
+---
+title: Releaser
+description: Utilities for checking GitHub releases and version management
+icon: rocket-launch
+---
+
+The `releaser` package provides utilities for fetching release information from GitHub and comparing versions. It's useful for building CLI tools that need to notify users about available updates.
+
+## Overview
+
+The releaser package offers:
+- Fetching latest release information from GitHub repositories
+- Semantic version comparison
+- Update check functionality for CLI tools
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Release Information" icon="info-circle">
+    Fetch latest release details from GitHub repositories including version and download URLs
+  </Card>
+  <Card title="Version Comparison" icon="code-compare">
+    Compare semantic versions to determine if updates are available
+  </Card>
+  <Card title="Update Notifications" icon="bell">
+    Generate user-friendly update messages for CLI tools
+  </Card>
+  <Card title="Configurable Timeout" icon="clock">
+    Control HTTP request timeouts for release checks
+  </Card>
+</CardGroup>
+
+## Types
+
+### Info
+
+Holds information about a software release:
+
+```go
+type Info struct {
+    Version string // Version of the release (e.g., "v1.2.3")
+    TarURL  string // Tarball download URL
+}
+```
+
+## Functions
+
+### FetchInfo
+
+Fetches the latest release information from a GitHub repository:
+
+```go
+func FetchInfo(url string) (*Info, error)
+```
+
+**Parameters:**
+- `url`: GitHub API URL (e.g., `https://api.github.com/repos/owner/repo/releases/latest`)
+
+**Returns:**
+- `*Info`: Release information containing version and tarball URL
+- `error`: Error if the request fails or response is invalid
+
+**Example:**
+
+```go
+import "github.com/raystack/salt/cli/releaser"
+
+url := "https://api.github.com/repos/raystack/salt/releases/latest"
+info, err := releaser.FetchInfo(url)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Latest version: %s\n", info.Version)
+fmt.Printf("Download URL: %s\n", info.TarURL)
+```
+
+### CompareVersions
+
+Compares two semantic versions:
+
+```go
+func CompareVersions(current, latest string) (bool, error)
+```
+
+**Parameters:**
+- `current`: Current version string (e.g., `"v1.0.0"`)
+- `latest`: Latest version string (e.g., `"v1.2.0"`)
+
+**Returns:**
+- `bool`: `true` if current version is greater than or equal to latest version
+- `error`: Error if version parsing fails
+
+**Example:**
+
+```go
+isUpToDate, err := releaser.CompareVersions("v1.0.0", "v1.2.0")
+if err != nil {
+    log.Fatal(err)
+}
+
+if !isUpToDate {
+    fmt.Println("Update available!")
+}
+```
+
+### CheckForUpdate
+
+Convenience function that fetches the latest release and generates an update message:
+
+```go
+func CheckForUpdate(currentVersion, repo string) string
+```
+
+**Parameters:**
+- `currentVersion`: Current version of your application (e.g., `"v1.0.0"`)
+- `repo`: GitHub repository in format `"owner/repo"`
+
+**Returns:**
+- `string`: Update message if a newer version is available, empty string otherwise
+
+**Example:**
+
+```go
+const version = "v1.0.0"
+
+if msg := releaser.CheckForUpdate(version, "raystack/salt"); msg != "" {
+    fmt.Println(msg)
+    // Output: A new release (v1.2.0) is available. consider updating to latest version.
+}
+```
+
+## Configuration
+
+### Timeout
+
+Control the HTTP client timeout for release checks:
+
+```go
+import "time"
+import "github.com/raystack/salt/cli/releaser"
+
+// Set custom timeout (default is 1 second)
+releaser.Timeout = time.Second * 5
+```
+
+### API Format
+
+The GitHub API URL template (can be customized if needed):
+
+```go
+// Default format
+releaser.APIFormat = "https://api.github.com/repos/%s/releases/latest"
+```
+
+## Complete Example
+
+Here's a complete example showing how to check for updates in a CLI tool:
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/raystack/salt/cli/releaser"
+)
+
+const (
+    appVersion = "v1.0.0"
+    repoName   = "myorg/myapp"
+)
+
+func main() {
+    // Check for updates
+    if msg := releaser.CheckForUpdate(appVersion, repoName); msg != "" {
+        fmt.Fprintf(os.Stderr, "\n%s\n\n", msg)
+    }
+
+    // Your application logic here
+    fmt.Println("Running application version:", appVersion)
+}
+```
+
+## Advanced Usage
+
+### Custom Release Information
+
+Fetch and process release information manually:
+
+```go
+import (
+    "fmt"
+    "github.com/raystack/salt/cli/releaser"
+)
+
+func checkVersion(currentVersion, repo string) {
+    // Construct GitHub API URL
+    url := fmt.Sprintf(releaser.APIFormat, repo)
+    
+    // Fetch release information
+    info, err := releaser.FetchInfo(url)
+    if err != nil {
+        fmt.Printf("Failed to check for updates: %v\n", err)
+        return
+    }
+    
+    // Compare versions
+    isUpToDate, err := releaser.CompareVersions(currentVersion, info.Version)
+    if err != nil {
+        fmt.Printf("Failed to compare versions: %v\n", err)
+        return
+    }
+    
+    if !isUpToDate {
+        fmt.Printf("New version available: %s\n", info.Version)
+        fmt.Printf("Download from: %s\n", info.TarURL)
+    } else {
+        fmt.Println("You are using the latest version")
+    }
+}
+```
+
+## Error Handling
+
+The releaser package returns errors in several scenarios:
+
+- **HTTP request failures**: Network issues or invalid URLs
+- **Non-200 status codes**: Repository not found or API rate limits
+- **JSON parsing errors**: Invalid response format
+- **Version parsing errors**: Invalid semantic version format
+
+Always check for errors when using releaser functions:
+
+```go
+info, err := releaser.FetchInfo(url)
+if err != nil {
+    // Handle error appropriately
+    log.Printf("Update check failed: %v", err)
+    return
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Background checks">
+    Run update checks in the background to avoid blocking application startup:
+    
+    ```go
+    go func() {
+        if msg := releaser.CheckForUpdate(version, repo); msg != "" {
+            fmt.Println(msg)
+        }
+    }()
+    ```
+  </Accordion>
+
+  <Accordion title="Cache results">
+    Cache update check results to avoid excessive API calls:
+    
+    ```go
+    // Check for updates once per day
+    if time.Since(lastUpdateCheck) > 24*time.Hour {
+        checkForUpdate()
+        lastUpdateCheck = time.Now()
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Handle rate limits">
+    GitHub API has rate limits. Handle errors gracefully:
+    
+    ```go
+    info, err := releaser.FetchInfo(url)
+    if err != nil {
+        // Don't fail the application, just log the error
+        log.Debug("Update check failed:", err)
+        return
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="User-Agent header">
+    The package automatically sets a User-Agent header (`raystack/salt`) for GitHub API requests. This helps with rate limiting and tracking.
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [Commander](/cli/commander) - CLI command management
+- [Printer](/cli/printer) - Terminal output utilities
+- [API Reference](/api/cli/releaser) - Complete API documentation

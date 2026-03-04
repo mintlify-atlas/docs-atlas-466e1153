@@ -50,7 +50,8 @@
               "cli/commander",
               "cli/printer",
               "cli/prompter",
-              "cli/terminator"
+              "cli/terminator",
+              "cli/releaser"
             ]
           },
           {
@@ -79,7 +80,8 @@
               "api/cli/commander",
               "api/cli/printer",
               "api/cli/prompter",
-              "api/cli/terminator"
+              "api/cli/terminator",
+              "api/cli/releaser"
             ]
           },
           {

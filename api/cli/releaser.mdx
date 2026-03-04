@@ -1,0 +1,281 @@
+---
+title: Releaser API
+description: Complete API reference for the releaser package
+icon: code
+---
+
+## Overview
+
+The `releaser` package provides utilities for checking GitHub releases and comparing versions. It's designed for CLI tools that need to notify users about available updates.
+
+**Import path:**
+```go
+import "github.com/raystack/salt/cli/releaser"
+```
+
+## Types
+
+### Info
+
+```go
+type Info struct {
+    Version string // Version of the release
+    TarURL  string // Tarball URL of the release
+}
+```
+
+Holds information about a software release fetched from GitHub.
+
+<ParamField path="Version" type="string">
+  The version tag of the release (e.g., `"v1.2.3"`)
+</ParamField>
+
+<ParamField path="TarURL" type="string">
+  The URL to download the release tarball
+</ParamField>
+
+## Functions
+
+### FetchInfo
+
+```go
+func FetchInfo(url string) (*Info, error)
+```
+
+Fetches details about the latest release from the provided GitHub API URL.
+
+<ParamField path="url" type="string" required>
+  The GitHub API URL to fetch release information from.
+  
+  Example: `"https://api.github.com/repos/raystack/salt/releases/latest"`
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="info" type="*Info">
+  Release information containing version and tarball URL
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the HTTP request fails, returns non-200 status, or JSON parsing fails
+</ResponseField>
+
+**Example:**
+
+```go
+url := "https://api.github.com/repos/raystack/salt/releases/latest"
+info, err := releaser.FetchInfo(url)
+if err != nil {
+    return err
+}
+
+fmt.Printf("Latest version: %s\n", info.Version)
+fmt.Printf("Download: %s\n", info.TarURL)
+```
+
+**Implementation Details:**
+
+- Sets timeout to `releaser.Timeout` (default 1 second)
+- Sets User-Agent header to `"raystack/salt"`
+- Parses JSON fields: `tag_name` and `tarball_url`
+- Returns error on non-200 HTTP status codes
+
+### CompareVersions
+
+```go
+func CompareVersions(current, latest string) (bool, error)
+```
+
+Compares two semantic versions to determine if the current version is up-to-date.
+
+<ParamField path="current" type="string" required>
+  The current version string (e.g., `"v1.0.0"`)
+</ParamField>
+
+<ParamField path="latest" type="string" required>
+  The latest version string to compare against (e.g., `"v1.2.0"`)
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="result" type="bool">
+  `true` if current version is greater than or equal to latest version, `false` otherwise
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if version string parsing fails (invalid semantic version format)
+</ResponseField>
+
+**Example:**
+
+```go
+isUpToDate, err := releaser.CompareVersions("v1.0.0", "v1.2.0")
+if err != nil {
+    return err
+}
+
+if !isUpToDate {
+    fmt.Println("Update available!")
+}
+```
+
+**Implementation Details:**
+
+- Uses `github.com/hashicorp/go-version` for semantic version parsing
+- Supports standard semantic versioning (MAJOR.MINOR.PATCH)
+- Handles version prefixes (e.g., `"v"` in `"v1.0.0"`)
+
+### CheckForUpdate
+
+```go
+func CheckForUpdate(currentVersion, repo string) string
+```
+
+Convenience function that fetches the latest release and generates an update message if a newer version is available.
+
+<ParamField path="currentVersion" type="string" required>
+  The current version of your application (e.g., `"v1.0.0"`)
+</ParamField>
+
+<ParamField path="repo" type="string" required>
+  GitHub repository in the format `"owner/repo"` (e.g., `"raystack/salt"`)
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="message" type="string">
+  Update message if a newer version is available. Returns empty string if:
+  - Current version is up-to-date
+  - Error occurs during fetch or comparison
+  - Network request fails
+</ResponseField>
+
+**Example:**
+
+```go
+const version = "v1.0.0"
+
+if msg := releaser.CheckForUpdate(version, "raystack/salt"); msg != "" {
+    fmt.Println(msg)
+}
+// Output (if update available):
+// A new release (v1.2.0) is available. consider updating to latest version.
+```
+
+**Implementation Details:**
+
+- Constructs GitHub API URL using `APIFormat` template
+- Calls `FetchInfo()` to get latest release
+- Calls `CompareVersions()` to check if update is needed
+- Silently handles errors by returning empty string
+- Does not block or panic on failure
+
+## Variables
+
+### Timeout
+
+```go
+var Timeout = time.Second * 1
+```
+
+Sets the HTTP client timeout for fetching release information. Default is 1 second.
+
+**Example:**
+
+```go
+import "time"
+
+// Increase timeout for slower networks
+releaser.Timeout = time.Second * 5
+```
+
+### APIFormat
+
+```go
+var APIFormat = "https://api.github.com/repos/%s/releases/latest"
+```
+
+The GitHub API URL template used to fetch the latest release of a repository. The `%s` is replaced with the repository name in `"owner/repo"` format.
+
+**Example:**
+
+```go
+// Use custom API endpoint (e.g., GitHub Enterprise)
+releaser.APIFormat = "https://github.mycompany.com/api/v3/repos/%s/releases/latest"
+```
+
+## Error Handling
+
+The package can return errors in these scenarios:
+
+| Error Type | Cause | Returned By |
+|------------|-------|-------------|
+| HTTP request creation failed | Invalid URL | `FetchInfo()` |
+| Network error | Connection timeout, DNS failure | `FetchInfo()` |
+| Non-200 status code | Repository not found, rate limit | `FetchInfo()` |
+| JSON parsing error | Invalid API response format | `FetchInfo()` |
+| Version parsing error | Invalid semantic version string | `CompareVersions()` |
+
+**Example Error Handling:**
+
+```go
+info, err := releaser.FetchInfo(url)
+if err != nil {
+    // Log but don't fail the application
+    log.Printf("Failed to check for updates: %v", err)
+    return
+}
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "time"
+    
+    "github.com/raystack/salt/cli/releaser"
+)
+
+const (
+    appVersion = "v1.0.0"
+    repoName   = "myorg/myapp"
+)
+
+func main() {
+    // Configure timeout
+    releaser.Timeout = time.Second * 3
+    
+    // Simple update check
+    if msg := releaser.CheckForUpdate(appVersion, repoName); msg != "" {
+        fmt.Println(msg)
+    }
+    
+    // Or manual check with more control
+    url := fmt.Sprintf(releaser.APIFormat, repoName)
+    info, err := releaser.FetchInfo(url)
+    if err != nil {
+        fmt.Printf("Update check failed: %v\n", err)
+        return
+    }
+    
+    isUpToDate, err := releaser.CompareVersions(appVersion, info.Version)
+    if err != nil {
+        fmt.Printf("Version comparison failed: %v\n", err)
+        return
+    }
+    
+    if !isUpToDate {
+        fmt.Printf("New version %s available!\n", info.Version)
+        fmt.Printf("Download: %s\n", info.TarURL)
+    }
+}
+```
+
+## Source Code Reference
+
+- Package location: `/home/daytona/workspace/source/cli/releaser/release.go`
+- Uses `github.com/hashicorp/go-version` for version comparison
+- Uses `github.com/pkg/errors` for error wrapping
